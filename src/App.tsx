@@ -4,6 +4,7 @@ import CheckOut from "./CheckOut"
 import Training from "./Training"
 import Coach from "./Coach"
 import PlayerProfile from "./PlayerProfile"
+import hovstaLogo from "./assets/300374317_580630103589064_157634585059629613_n.jpg"
 
 type Exercise = {
   id: number
@@ -158,23 +159,24 @@ function App() {
     return training.createdAt
   }
 
-  const getNextTraining = (): TrainingData | null => {
-    const trainings = getTrainings()
-    const now = Date.now()
+  const getNextTraining =
+    (): TrainingData | null => {
+      const trainings = getTrainings()
+      const now = Date.now()
 
-    const upcomingTrainings = trainings
-      .filter(
-        (training) =>
-          getTrainingDateTime(training) >= now
-      )
-      .sort(
-        (a, b) =>
-          getTrainingDateTime(a) -
-          getTrainingDateTime(b)
-      )
+      const upcomingTrainings = trainings
+        .filter(
+          (training) =>
+            getTrainingDateTime(training) >= now
+        )
+        .sort(
+          (a, b) =>
+            getTrainingDateTime(a) -
+            getTrainingDateTime(b)
+        )
 
-    return upcomingTrainings[0] ?? null
-  }
+      return upcomingTrainings[0] ?? null
+    }
 
   const getCurrentCheckOutTraining =
     (): TrainingData | null => {
@@ -213,7 +215,8 @@ function App() {
   const hasCheckedIn = (
     training: TrainingData
   ) => {
-    const trainingId = getTrainingId(training)
+    const trainingId =
+      getTrainingId(training)
 
     return getCheckIns().some(
       (checkIn) =>
@@ -226,7 +229,8 @@ function App() {
   const hasCheckedOut = (
     training: TrainingData
   ) => {
-    const trainingId = getTrainingId(training)
+    const trainingId =
+      getTrainingId(training)
 
     return getCheckOuts().some(
       (checkOut) =>
@@ -287,7 +291,8 @@ function App() {
       trainingTime + 30 * 60 * 1000
 
     const closeTime =
-      trainingTime + 7 * 60 * 60 * 1000
+      trainingTime +
+      7 * 60 * 60 * 1000
 
     if (now < openTime) {
       return "locked"
@@ -317,11 +322,14 @@ function App() {
         6 * 60 * 60 * 1000
     )
 
-    return new Intl.DateTimeFormat("sv-SE", {
-      weekday: "long",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(openTime)
+    return new Intl.DateTimeFormat(
+      "sv-SE",
+      {
+        weekday: "long",
+        hour: "2-digit",
+        minute: "2-digit",
+      }
+    ).format(openTime)
   }
 
   const getCheckOutOpenTime = (
@@ -335,10 +343,13 @@ function App() {
         30 * 60 * 1000
     )
 
-    return new Intl.DateTimeFormat("sv-SE", {
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(openTime)
+    return new Intl.DateTimeFormat(
+      "sv-SE",
+      {
+        hour: "2-digit",
+        minute: "2-digit",
+      }
+    ).format(openTime)
   }
 
   const getCheckOutCloseTime = (
@@ -352,10 +363,13 @@ function App() {
         7 * 60 * 60 * 1000
     )
 
-    return new Intl.DateTimeFormat("sv-SE", {
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(closeTime)
+    return new Intl.DateTimeFormat(
+      "sv-SE",
+      {
+        hour: "2-digit",
+        minute: "2-digit",
+      }
+    ).format(closeTime)
   }
 
   const formatDate = (date: string) => {
@@ -367,34 +381,45 @@ function App() {
       `${date}T12:00:00`
     )
 
-    return new Intl.DateTimeFormat("sv-SE", {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-    }).format(dateObject)
+    return new Intl.DateTimeFormat(
+      "sv-SE",
+      {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+      }
+    ).format(dateObject)
   }
 
   if (page === "checkin") {
     return (
-      <CheckIn onBack={() => setPage("home")} />
+      <CheckIn
+        onBack={() => setPage("home")}
+      />
     )
   }
 
   if (page === "checkout") {
     return (
-      <CheckOut onBack={() => setPage("home")} />
+      <CheckOut
+        onBack={() => setPage("home")}
+      />
     )
   }
 
   if (page === "training") {
     return (
-      <Training onBack={() => setPage("home")} />
+      <Training
+        onBack={() => setPage("home")}
+      />
     )
   }
 
   if (page === "coach") {
     return (
-      <Coach onBack={() => setPage("home")} />
+      <Coach
+        onBack={() => setPage("home")}
+      />
     )
   }
 
@@ -406,11 +431,21 @@ function App() {
     )
   }
 
+  const cardStyle: React.CSSProperties = {
+    background: "white",
+    borderRadius: "18px",
+    padding: "20px",
+    marginBottom: "16px",
+    boxShadow:
+      "0 3px 14px rgba(18,59,42,0.07)",
+    border: "1px solid #edf0ee",
+  }
+
   return (
     <div
       style={{
         minHeight: "100vh",
-        background: "#f4f6f8",
+        background: "#f4f6f5",
         fontFamily: "Arial, sans-serif",
         color: "#17202a",
       }}
@@ -419,37 +454,109 @@ function App() {
         style={{
           background: "#123b2a",
           color: "white",
-          padding: "24px 20px",
-          borderRadius: "0 0 24px 24px",
+          borderRadius: "0 0 28px 28px",
+          overflow: "hidden",
+          boxShadow:
+            "0 5px 18px rgba(18,59,42,0.18)",
         }}
       >
-        <p
+        <div
           style={{
-            margin: 0,
-            fontSize: "14px",
-            opacity: 0.8,
+            height: "5px",
+            background: "#f39200",
           }}
-        >
-          HOVSTA IF
-        </p>
+        />
 
-        <h1
+        <div
           style={{
-            margin: "8px 0 4px",
-            fontSize: "28px",
+            maxWidth: "600px",
+            margin: "0 auto",
+            padding: "20px 20px 26px",
           }}
         >
-          Hej! 👋
-        </h1>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "18px",
+              marginBottom: "24px",
+            }}
+          >
+            <div
+              style={{
+                width: "120px",
+                height: "120px",
+                minWidth: "120px",
+                borderRadius: "17px",
+                background: "white",
+                padding: "6px",
+                boxSizing: "border-box",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow:
+                  "0 3px 10px rgba(0,0,0,0.15)",
+              }}
+            >
+              <img
+                src={hovstaLogo}
+                alt="Hovsta IF"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "contain",
+                  borderRadius: "11px",
+                }}
+              />
+            </div>
 
-        <p
-          style={{
-            margin: 0,
-            opacity: 0.9,
-          }}
-        >
-          Välkommen till lagappen
-        </p>
+            <div>
+              <p
+                style={{
+                  margin: 0,
+                  color: "#f39200",
+                  fontSize: "22px",
+                  fontWeight: "bold",
+                  letterSpacing: "1.4px",
+                }}
+              >
+                HOVSTA IF
+              </p>
+
+              <p
+                style={{
+                  margin: "5px 0 0",
+                  color: "white",
+                  fontSize: "22px",
+                  fontWeight: "bold",
+                  letterSpacing: "0.2px",
+                }}
+              >
+                Lagappen
+              </p>
+            </div>
+          </div>
+
+          <h1
+            style={{
+              margin: "0 0 7px",
+              fontSize: "29px",
+              letterSpacing: "-0.5px",
+            }}
+          >
+            Hej! 👋
+          </h1>
+
+          <p
+            style={{
+              margin: 0,
+              color: "#dbe6df",
+              fontSize: "15px",
+            }}
+          >
+            Här är det senaste från laget.
+          </p>
+        </div>
       </header>
 
       <main
@@ -459,32 +566,45 @@ function App() {
           padding: "20px",
         }}
       >
-        <section
-          style={{
-            background: "white",
-            borderRadius: "18px",
-            padding: "20px",
-            marginBottom: "16px",
-            boxShadow:
-              "0 2px 8px rgba(0,0,0,0.06)",
-          }}
-        >
-          <p
+        <section style={cardStyle}>
+          <div
             style={{
-              margin: 0,
-              fontSize: "13px",
-              color: "#6b7280",
-              textTransform: "uppercase",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "12px",
             }}
           >
-            Nästa träning
-          </p>
+            <p
+              style={{
+                margin: 0,
+                fontSize: "12px",
+                color: "#6b7280",
+                fontWeight: "bold",
+                letterSpacing: "0.7px",
+                textTransform: "uppercase",
+              }}
+            >
+              Nästa träning
+            </p>
+
+            <span
+              style={{
+                width: "9px",
+                height: "9px",
+                borderRadius: "50%",
+                background: "#f39200",
+              }}
+            />
+          </div>
 
           {nextTraining ? (
             <>
               <h2
                 style={{
-                  margin: "8px 0",
+                  margin: "10px 0 8px",
+                  color: "#17202a",
+                  fontSize: "22px",
                   textTransform: "capitalize",
                 }}
               >
@@ -495,21 +615,32 @@ function App() {
               <p
                 style={{
                   margin: "4px 0",
-                  color: "#555",
+                  color: "#5f6663",
                 }}
               >
                 📍 {nextTraining.location}
               </p>
 
-              <p
+              <div
                 style={{
-                  margin: "10px 0 0",
-                  color: "#123b2a",
-                  fontWeight: "bold",
+                  marginTop: "14px",
+                  padding: "12px 14px",
+                  borderRadius: "12px",
+                  background: "#f7f9f8",
+                  borderLeft:
+                    "4px solid #f39200",
                 }}
               >
-                ⚽ {nextTraining.focus}
-              </p>
+                <p
+                  style={{
+                    margin: 0,
+                    color: "#123b2a",
+                    fontWeight: "bold",
+                  }}
+                >
+                  ⚽ {nextTraining.focus}
+                </p>
+              </div>
 
               {checkInStatus === "locked" && (
                 <div
@@ -518,7 +649,8 @@ function App() {
                     padding: "15px",
                     borderRadius: "14px",
                     background: "#f4f6f8",
-                    border: "1px solid #e1e4e6",
+                    border:
+                      "1px solid #e1e4e6",
                   }}
                 >
                   <div
@@ -530,7 +662,7 @@ function App() {
                   >
                     <span
                       style={{
-                        fontSize: "24px",
+                        fontSize: "22px",
                       }}
                     >
                       🔒
@@ -583,7 +715,7 @@ function App() {
                         color: "#123b2a",
                       }}
                     >
-                      💚 Check-in är öppen
+                      ✓ Check-in är öppen
                     </strong>
 
                     <span
@@ -611,7 +743,7 @@ function App() {
                       borderRadius: "12px",
                       background: "#123b2a",
                       color: "white",
-                      fontSize: "16px",
+                      fontSize: "15px",
                       fontWeight: "bold",
                       cursor: "pointer",
                     }}
@@ -687,7 +819,7 @@ function App() {
             <>
               <h2
                 style={{
-                  margin: "8px 0",
+                  margin: "10px 0 8px",
                 }}
               >
                 Ingen kommande träning
@@ -707,21 +839,14 @@ function App() {
         </section>
 
         {checkOutTraining && (
-          <section
-            style={{
-              background: "white",
-              borderRadius: "18px",
-              padding: "20px",
-              marginBottom: "16px",
-              boxShadow:
-                "0 2px 8px rgba(0,0,0,0.06)",
-            }}
-          >
+          <section style={cardStyle}>
             <p
               style={{
                 margin: 0,
-                fontSize: "13px",
+                fontSize: "12px",
                 color: "#6b7280",
+                fontWeight: "bold",
+                letterSpacing: "0.7px",
                 textTransform: "uppercase",
               }}
             >
@@ -730,7 +855,7 @@ function App() {
 
             <h2
               style={{
-                margin: "8px 0",
+                margin: "9px 0",
                 color: "#123b2a",
               }}
             >
@@ -766,7 +891,8 @@ function App() {
                   padding: "15px",
                   borderRadius: "14px",
                   background: "#fff8e6",
-                  border: "1px solid #f1d995",
+                  border:
+                    "1px solid #f1d995",
                 }}
               >
                 <strong
@@ -803,7 +929,8 @@ function App() {
                     padding: "14px",
                     borderRadius: "14px",
                     background: "#e7f1eb",
-                    border: "1px solid #c9ded1",
+                    border:
+                      "1px solid #c9ded1",
                   }}
                 >
                   <strong
@@ -812,7 +939,7 @@ function App() {
                       color: "#123b2a",
                     }}
                   >
-                    💚 Check-out är öppen
+                    ✓ Check-out är öppen
                   </strong>
 
                   <span
@@ -854,7 +981,7 @@ function App() {
                     borderRadius: "12px",
                     background: "#123b2a",
                     color: "white",
-                    fontSize: "16px",
+                    fontSize: "15px",
                     fontWeight: "bold",
                     cursor: "pointer",
                   }}
@@ -866,92 +993,104 @@ function App() {
 
             {checkOutStatus ===
               "completed" && (
-              <div
-                style={{
-                  marginTop: "18px",
-                  padding: "15px",
-                  borderRadius: "14px",
-                  background: "#e7f1eb",
-                  border: "1px solid #c9ded1",
-                }}
-              >
                 <div
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "10px",
+                    marginTop: "18px",
+                    padding: "15px",
+                    borderRadius: "14px",
+                    background: "#e7f1eb",
+                    border:
+                      "1px solid #c9ded1",
                   }}
                 >
                   <div
                     style={{
-                      width: "34px",
-                      height: "34px",
-                      minWidth: "34px",
-                      borderRadius: "50%",
-                      background: "#123b2a",
-                      color: "white",
                       display: "flex",
                       alignItems: "center",
-                      justifyContent: "center",
-                      fontWeight: "bold",
+                      gap: "10px",
                     }}
                   >
-                    ✓
-                  </div>
-
-                  <div>
-                    <strong
+                    <div
                       style={{
-                        display: "block",
-                        color: "#123b2a",
+                        width: "34px",
+                        height: "34px",
+                        minWidth: "34px",
+                        borderRadius: "50%",
+                        background: "#123b2a",
+                        color: "white",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontWeight: "bold",
                       }}
                     >
-                      Du har checkat ut
-                    </strong>
+                      ✓
+                    </div>
 
-                    <span
-                      style={{
-                        display: "block",
-                        marginTop: "3px",
-                        color: "#526158",
-                        fontSize: "13px",
-                      }}
-                    >
-                      Din check-out är registrerad.
-                    </span>
+                    <div>
+                      <strong
+                        style={{
+                          display: "block",
+                          color: "#123b2a",
+                        }}
+                      >
+                        Du har checkat ut
+                      </strong>
+
+                      <span
+                        style={{
+                          display: "block",
+                          marginTop: "3px",
+                          color: "#526158",
+                          fontSize: "13px",
+                        }}
+                      >
+                        Din check-out är registrerad.
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
           </section>
         )}
 
-        <section
-          style={{
-            background: "white",
-            borderRadius: "18px",
-            padding: "20px",
-            marginBottom: "16px",
-            boxShadow:
-              "0 2px 8px rgba(0,0,0,0.06)",
-          }}
-        >
-          <p
+        <section style={cardStyle}>
+          <div
             style={{
-              margin: 0,
-              fontSize: "13px",
-              color: "#6b7280",
-              textTransform: "uppercase",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
             }}
           >
-            Träningsplan
-          </p>
+            <p
+              style={{
+                margin: 0,
+                fontSize: "12px",
+                color: "#6b7280",
+                fontWeight: "bold",
+                letterSpacing: "0.7px",
+                textTransform: "uppercase",
+              }}
+            >
+              Träningsplan
+            </p>
+
+            <span
+              style={{
+                color: "#f39200",
+                fontSize: "18px",
+              }}
+            >
+              ⚽
+            </span>
+          </div>
 
           {nextTraining ? (
             <>
               <h2
                 style={{
-                  margin: "8px 0",
+                  margin: "9px 0",
+                  color: "#123b2a",
                 }}
               >
                 {nextTraining.focus}
@@ -959,7 +1098,7 @@ function App() {
 
               <p
                 style={{
-                  color: "#555",
+                  color: "#5f6663",
                   lineHeight: "1.5",
                 }}
               >
@@ -973,14 +1112,17 @@ function App() {
                 }
                 style={{
                   padding: "10px 16px",
-                  border: "1px solid #d1d5db",
+                  border:
+                    "1px solid #d7ddd9",
                   borderRadius: "10px",
                   background: "white",
+                  color: "#123b2a",
                   fontSize: "14px",
+                  fontWeight: "bold",
                   cursor: "pointer",
                 }}
               >
-                Se träningar
+                Se träningar →
               </button>
             </>
           ) : (
@@ -1000,14 +1142,17 @@ function App() {
                 }
                 style={{
                   padding: "10px 16px",
-                  border: "1px solid #d1d5db",
+                  border:
+                    "1px solid #d7ddd9",
                   borderRadius: "10px",
                   background: "white",
+                  color: "#123b2a",
                   fontSize: "14px",
+                  fontWeight: "bold",
                   cursor: "pointer",
                 }}
               >
-                Se alla träningar
+                Se alla träningar →
               </button>
             </>
           )}
@@ -1015,18 +1160,23 @@ function App() {
 
         <section
           style={{
-            background: "#e7f1eb",
+            background: "#edf4f0",
             borderRadius: "18px",
             padding: "20px",
             marginBottom: "16px",
-            border: "1px solid #c9ded1",
+            border:
+              "1px solid #d4e2da",
+            borderTop:
+              "3px solid #f39200",
           }}
         >
           <p
             style={{
               margin: 0,
-              fontSize: "13px",
+              fontSize: "12px",
               color: "#52705f",
+              fontWeight: "bold",
+              letterSpacing: "0.7px",
               textTransform: "uppercase",
             }}
           >
@@ -1049,7 +1199,7 @@ function App() {
             }}
           >
             Hantera träningar, spelare och
-            check-ins.
+            spelarnas svar.
           </p>
 
           <button
@@ -1076,17 +1226,24 @@ function App() {
           style={{
             background: "white",
             borderRadius: "18px",
-            padding: "14px 8px",
+            padding: "13px 6px",
             display: "flex",
             justifyContent: "space-around",
             boxShadow:
-              "0 2px 8px rgba(0,0,0,0.06)",
+              "0 3px 14px rgba(18,59,42,0.08)",
+            border:
+              "1px solid #edf0ee",
           }}
         >
           <span
             style={{
               textAlign: "center",
-              fontSize: "13px",
+              fontSize: "12px",
+              color: "#123b2a",
+              fontWeight: "bold",
+              borderTop:
+                "2px solid #f39200",
+              paddingTop: "5px",
             }}
           >
             🏠
@@ -1105,7 +1262,7 @@ function App() {
             }}
             style={{
               textAlign: "center",
-              fontSize: "13px",
+              fontSize: "12px",
               cursor:
                 checkInStatus === "open" ||
                 checkInStatus === "completed"
@@ -1115,7 +1272,7 @@ function App() {
                 checkInStatus === "open" ||
                 checkInStatus === "completed"
                   ? 1
-                  : 0.45,
+                  : 0.4,
             }}
           >
             💚
@@ -1134,7 +1291,7 @@ function App() {
             }}
             style={{
               textAlign: "center",
-              fontSize: "13px",
+              fontSize: "12px",
               cursor:
                 checkOutStatus === "open" ||
                 checkOutStatus === "completed"
@@ -1144,7 +1301,7 @@ function App() {
                 checkOutStatus === "open" ||
                 checkOutStatus === "completed"
                   ? 1
-                  : 0.45,
+                  : 0.4,
             }}
           >
             👋
@@ -1158,7 +1315,7 @@ function App() {
             }
             style={{
               textAlign: "center",
-              fontSize: "13px",
+              fontSize: "12px",
               cursor: "pointer",
             }}
           >
@@ -1173,7 +1330,7 @@ function App() {
             }
             style={{
               textAlign: "center",
-              fontSize: "13px",
+              fontSize: "12px",
               cursor: "pointer",
             }}
           >
@@ -1182,6 +1339,18 @@ function App() {
             Profil
           </span>
         </nav>
+
+        <p
+          style={{
+            margin: "18px 0 4px",
+            textAlign: "center",
+            color: "#9aa29d",
+            fontSize: "11px",
+            letterSpacing: "0.5px",
+          }}
+        >
+          HOVSTA IF • 1976
+        </p>
       </main>
     </div>
   )

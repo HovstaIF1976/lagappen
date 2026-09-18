@@ -22,9 +22,24 @@ type CheckInData = {
   date: string
 }
 
+type CheckOutData = {
+  id: number
+  playerName: string
+  feeling: number
+  effort: number
+  body: number
+  comment: string
+  date: string
+}
+
+type ProfileTab = "checkin" | "checkout"
+
 function Players({ onBack }: PlayersProps) {
   const [selectedPlayer, setSelectedPlayer] =
     useState<Player | null>(null)
+
+  const [profileTab, setProfileTab] =
+    useState<ProfileTab>("checkin")
 
   const players: Player[] = [
     {
@@ -60,27 +75,39 @@ function Players({ onBack }: PlayersProps) {
   ]
 
   const getCheckIns = (): CheckInData[] => {
-    const savedCheckIns =
-      localStorage.getItem("hovstaCheckIns")
+    const saved = localStorage.getItem("hovstaCheckIns")
 
-    if (!savedCheckIns) {
+    if (!saved) {
       return []
     }
 
     try {
-      const parsedCheckIns = JSON.parse(savedCheckIns)
+      const parsed = JSON.parse(saved)
 
-      if (Array.isArray(parsedCheckIns)) {
-        return parsedCheckIns
-      }
-
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
       return []
+    }
+  }
+
+  const getCheckOuts = (): CheckOutData[] => {
+    const saved = localStorage.getItem("hovstaCheckOuts")
+
+    if (!saved) {
+      return []
+    }
+
+    try {
+      const parsed = JSON.parse(saved)
+
+      return Array.isArray(parsed) ? parsed : []
     } catch {
       return []
     }
   }
 
   const checkIns = getCheckIns()
+  const checkOuts = getCheckOuts()
 
   const getPlayerCheckIns = (player: Player) => {
     return checkIns
@@ -95,14 +122,30 @@ function Players({ onBack }: PlayersProps) {
       )
   }
 
-  const getLatestCheckIn = (player: Player) => {
-    const playerCheckIns = getPlayerCheckIns(player)
+  const getPlayerCheckOuts = (player: Player) => {
+    return checkOuts
+      .filter(
+        (checkOut) =>
+          checkOut.playerName === player.name
+      )
+      .sort(
+        (a, b) =>
+          new Date(b.date).getTime() -
+          new Date(a.date).getTime()
+      )
+  }
 
-    return playerCheckIns[0] ?? null
+  const getLatestCheckIn = (player: Player) => {
+    return getPlayerCheckIns(player)[0] ?? null
+  }
+
+  const getLatestCheckOut = (player: Player) => {
+    return getPlayerCheckOuts(player)[0] ?? null
   }
 
   const hasPain = (checkIn: CheckInData) => {
-    const pain = checkIn.pain.trim().toLowerCase()
+    const pain =
+      checkIn.pain?.trim().toLowerCase() ?? ""
 
     return (
       pain !== "" &&
@@ -113,24 +156,30 @@ function Players({ onBack }: PlayersProps) {
     )
   }
 
-  const getStatus = (checkIn: CheckInData | null) => {
+  const getStatus = (
+    checkIn: CheckInData | null
+  ) => {
     if (!checkIn) {
       return {
         text: "Ingen check-in",
         background: "#f1f3f4",
         color: "#6b7280",
+        border: "#e3e6e4",
       }
     }
 
     if (
-      (checkIn.mood !== null && checkIn.mood <= 2) ||
-      (checkIn.energy !== null && checkIn.energy <= 2) ||
+      (checkIn.mood !== null &&
+        checkIn.mood <= 2) ||
+      (checkIn.energy !== null &&
+        checkIn.energy <= 2) ||
       hasPain(checkIn)
     ) {
       return {
         text: "Behöver uppmärksamhet",
         background: "#fff1f1",
         color: "#9b2c2c",
+        border: "#ead0d0",
       }
     }
 
@@ -142,6 +191,7 @@ function Players({ onBack }: PlayersProps) {
         text: "Följ upp",
         background: "#fff8e7",
         color: "#806522",
+        border: "#ead9a5",
       }
     }
 
@@ -149,10 +199,13 @@ function Players({ onBack }: PlayersProps) {
       text: "Ser bra ut",
       background: "#e7f1eb",
       color: "#123b2a",
+      border: "#cfe0d5",
     }
   }
 
-  const getMoodEmoji = (mood: number | null) => {
+  const getMoodEmoji = (
+    mood: number | null
+  ) => {
     if (mood === 1) return "😞"
     if (mood === 2) return "😕"
     if (mood === 3) return "😐"
@@ -162,7 +215,9 @@ function Players({ onBack }: PlayersProps) {
     return "–"
   }
 
-  const getMoodText = (mood: number | null) => {
+  const getMoodText = (
+    mood: number | null
+  ) => {
     if (mood === 1) return "Inte bra"
     if (mood === 2) return "Sådär"
     if (mood === 3) return "Okej"
@@ -172,7 +227,9 @@ function Players({ onBack }: PlayersProps) {
     return "Ej svarat"
   }
 
-  const getEnergyEmoji = (energy: number | null) => {
+  const getEnergyEmoji = (
+    energy: number | null
+  ) => {
     if (energy === 1) return "🪫"
     if (energy === 2) return "🔋"
     if (energy === 3) return "🔋"
@@ -182,7 +239,17 @@ function Players({ onBack }: PlayersProps) {
     return "–"
   }
 
-  const formatCheckInTime = (date: string) => {
+  const getFeelingEmoji = (feeling: number) => {
+    if (feeling === 1) return "😞"
+    if (feeling === 2) return "😕"
+    if (feeling === 3) return "😐"
+    if (feeling === 4) return "🙂"
+    if (feeling === 5) return "😄"
+
+    return "–"
+  }
+
+  const formatResponseTime = (date: string) => {
     if (!date) {
       return ""
     }
@@ -197,719 +264,1454 @@ function Players({ onBack }: PlayersProps) {
     }).format(dateObject)
   }
 
-  /*
-    SPELARPROFIL
-  */
-  if (selectedPlayer) {
-    const latestCheckIn =
-      getLatestCheckIn(selectedPlayer)
+  const pageStyle: React.CSSProperties = {
+    minHeight: "100vh",
+    background: "#f4f6f5",
+    fontFamily: "Arial, sans-serif",
+    color: "#17202a",
+  }
 
-    const playerCheckIns =
-      getPlayerCheckIns(selectedPlayer)
+  const mainStyle: React.CSSProperties = {
+    maxWidth: "600px",
+    margin: "0 auto",
+    padding: "20px",
+  }
 
-    const status = getStatus(latestCheckIn)
+  const cardStyle: React.CSSProperties = {
+    background: "white",
+    borderRadius: "18px",
+    padding: "20px",
+    marginBottom: "16px",
+    border: "1px solid #edf0ee",
+    boxShadow:
+      "0 3px 14px rgba(18,59,42,0.07)",
+  }
 
+  const Header = ({
+    eyebrow,
+    title,
+    subtitle,
+    onHeaderBack,
+    backText = "Tillbaka",
+  }: {
+    eyebrow: string
+    title: string
+    subtitle: string
+    onHeaderBack: () => void
+    backText?: string
+  }) => {
     return (
-      <div
+      <header
         style={{
-          minHeight: "100vh",
-          background: "#f4f6f8",
-          fontFamily: "Arial, sans-serif",
-          color: "#17202a",
+          background: "#123b2a",
+          color: "white",
+          borderRadius: "0 0 28px 28px",
+          overflow: "hidden",
+          boxShadow:
+            "0 5px 18px rgba(18,59,42,0.18)",
         }}
       >
-        <header
+        <div
           style={{
-            background: "#123b2a",
-            color: "white",
-            padding: "24px 20px",
-            borderRadius: "0 0 24px 24px",
+            height: "5px",
+            background: "#f39200",
+          }}
+        />
+
+        <div
+          style={{
+            maxWidth: "600px",
+            margin: "0 auto",
+            padding: "20px 20px 27px",
           }}
         >
           <button
-            onClick={() => setSelectedPlayer(null)}
+            onClick={onHeaderBack}
             style={{
-              background: "rgba(255,255,255,0.15)",
+              background:
+                "rgba(255,255,255,0.1)",
               color: "white",
               border:
-                "1px solid rgba(255,255,255,0.3)",
+                "1px solid rgba(255,255,255,0.22)",
               borderRadius: "10px",
               padding: "9px 13px",
               cursor: "pointer",
-              marginBottom: "18px",
+              marginBottom: "22px",
+              fontSize: "14px",
+              fontWeight: "bold",
             }}
           >
-            ← Alla spelare
+            ← {backText}
           </button>
 
           <p
             style={{
               margin: 0,
-              fontSize: "13px",
-              opacity: 0.8,
+              color: "#f39200",
+              fontSize: "12px",
+              fontWeight: "bold",
+              letterSpacing: "1px",
+              textTransform: "uppercase",
             }}
           >
-            HOVSTA IF • SPELARE
+            {eyebrow}
           </p>
 
           <h1
             style={{
-              margin: "8px 0 4px",
-              fontSize: "28px",
+              margin: "7px 0 6px",
+              fontSize: "29px",
+              letterSpacing: "-0.5px",
             }}
           >
-            {selectedPlayer.name}
+            {title}
           </h1>
 
           <p
             style={{
               margin: 0,
-              opacity: 0.9,
+              color: "#dbe6df",
+              fontSize: "14px",
+              lineHeight: "1.5",
             }}
           >
-            #{selectedPlayer.number} •{" "}
-            {selectedPlayer.position}
+            {subtitle}
           </p>
-        </header>
+        </div>
+      </header>
+    )
+  }
 
-        <main
-          style={{
-            maxWidth: "600px",
-            margin: "0 auto",
-            padding: "20px",
+  if (selectedPlayer) {
+    const latestCheckIn =
+      getLatestCheckIn(selectedPlayer)
+
+    const latestCheckOut =
+      getLatestCheckOut(selectedPlayer)
+
+    const playerCheckIns =
+      getPlayerCheckIns(selectedPlayer)
+
+    const playerCheckOuts =
+      getPlayerCheckOuts(selectedPlayer)
+
+    const status = getStatus(latestCheckIn)
+
+    return (
+      <div style={pageStyle}>
+        <Header
+          eyebrow="Hovsta IF • Spelarprofil"
+          title={selectedPlayer.name}
+          subtitle={`#${selectedPlayer.number} • ${selectedPlayer.position}`}
+          backText="Alla spelare"
+          onHeaderBack={() => {
+            setSelectedPlayer(null)
+            setProfileTab("checkin")
           }}
-        >
+        />
+
+        <main style={mainStyle}>
           <section
             style={{
-              background: "white",
-              borderRadius: "18px",
-              padding: "20px",
-              marginBottom: "16px",
-              boxShadow:
-                "0 2px 8px rgba(0,0,0,0.06)",
+              ...cardStyle,
+              borderTop: "4px solid #f39200",
             }}
           >
             <p
               style={{
-                margin: 0,
+                margin: "0 0 13px",
                 color: "#6b7280",
-                fontSize: "13px",
+                fontSize: "11px",
+                fontWeight: "bold",
+                letterSpacing: "0.8px",
                 textTransform: "uppercase",
               }}
             >
               Spelarinformation
             </p>
 
-            <h2
-              style={{
-                margin: "10px 0 14px",
-                color: "#123b2a",
-              }}
-            >
-              {selectedPlayer.name}
-            </h2>
-
-            <p style={{ margin: "8px 0" }}>
-              <strong>Tröjnummer:</strong>{" "}
-              {selectedPlayer.number}
-            </p>
-
-            <p style={{ margin: "8px 0" }}>
-              <strong>Position:</strong>{" "}
-              {selectedPlayer.position}
-            </p>
-          </section>
-
-          <section
-            style={{
-              background: "white",
-              borderRadius: "18px",
-              padding: "20px",
-              marginBottom: "16px",
-              boxShadow:
-                "0 2px 8px rgba(0,0,0,0.06)",
-            }}
-          >
             <div
               style={{
                 display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-                gap: "10px",
-                marginBottom: "16px",
+                alignItems: "center",
+                gap: "15px",
               }}
             >
-              <div>
+              <div
+                style={{
+                  width: "62px",
+                  height: "62px",
+                  minWidth: "62px",
+                  borderRadius: "18px",
+                  background: "#123b2a",
+                  color: "white",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "24px",
+                  fontWeight: "bold",
+                  boxShadow:
+                    "0 4px 12px rgba(18,59,42,0.16)",
+                }}
+              >
+                {selectedPlayer.number}
+              </div>
+
+              <div style={{ flex: 1 }}>
+                <h2
+                  style={{
+                    margin: "0 0 5px",
+                    color: "#123b2a",
+                    fontSize: "21px",
+                  }}
+                >
+                  {selectedPlayer.name}
+                </h2>
+
                 <p
                   style={{
                     margin: 0,
                     color: "#6b7280",
-                    fontSize: "13px",
-                    textTransform: "uppercase",
+                    fontSize: "14px",
                   }}
                 >
-                  Senaste check-in
+                  #{selectedPlayer.number} •{" "}
+                  {selectedPlayer.position}
                 </p>
-
-                {latestCheckIn && (
-                  <p
-                    style={{
-                      margin: "5px 0 0",
-                      color: "#6b7280",
-                      fontSize: "12px",
-                    }}
-                  >
-                    {formatCheckInTime(
-                      latestCheckIn.date
-                    )}
-                  </p>
-                )}
               </div>
-
-              <span
-                style={{
-                  background: status.background,
-                  color: status.color,
-                  borderRadius: "999px",
-                  padding: "7px 10px",
-                  fontSize: "11px",
-                  fontWeight: "bold",
-                  textAlign: "center",
-                }}
-              >
-                {status.text}
-              </span>
             </div>
-
-            {latestCheckIn ? (
-              <>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns:
-                      "repeat(3, 1fr)",
-                    gap: "8px",
-                  }}
-                >
-                  <div
-                    style={{
-                      background: "#f7f8f8",
-                      borderRadius: "14px",
-                      padding: "14px 6px",
-                      textAlign: "center",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: "30px",
-                        marginBottom: "6px",
-                      }}
-                    >
-                      {getMoodEmoji(
-                        latestCheckIn.mood
-                      )}
-                    </div>
-
-                    <p
-                      style={{
-                        margin: "0 0 4px",
-                        color: "#6b7280",
-                        fontSize: "11px",
-                      }}
-                    >
-                      Mående
-                    </p>
-
-                    <strong
-                      style={{
-                        fontSize: "12px",
-                      }}
-                    >
-                      {getMoodText(
-                        latestCheckIn.mood
-                      )}
-                    </strong>
-                  </div>
-
-                  <div
-                    style={{
-                      background: "#f7f8f8",
-                      borderRadius: "14px",
-                      padding: "14px 6px",
-                      textAlign: "center",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: "30px",
-                        marginBottom: "6px",
-                      }}
-                    >
-                      {getEnergyEmoji(
-                        latestCheckIn.energy
-                      )}
-                    </div>
-
-                    <p
-                      style={{
-                        margin: "0 0 4px",
-                        color: "#6b7280",
-                        fontSize: "11px",
-                      }}
-                    >
-                      Energi
-                    </p>
-
-                    <strong
-                      style={{
-                        fontSize: "12px",
-                      }}
-                    >
-                      {latestCheckIn.energy ?? "–"}/5
-                    </strong>
-                  </div>
-
-                  <div
-                    style={{
-                      background: hasPain(latestCheckIn)
-                        ? "#fff1f1"
-                        : "#f7f8f8",
-                      borderRadius: "14px",
-                      padding: "14px 6px",
-                      textAlign: "center",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: "30px",
-                        marginBottom: "6px",
-                      }}
-                    >
-                      {hasPain(latestCheckIn)
-                        ? "⚠️"
-                        : "✅"}
-                    </div>
-
-                    <p
-                      style={{
-                        margin: "0 0 4px",
-                        color: "#6b7280",
-                        fontSize: "11px",
-                      }}
-                    >
-                      Skada
-                    </p>
-
-                    <strong
-                      style={{
-                        fontSize: "12px",
-                        color: hasPain(
-                          latestCheckIn
-                        )
-                          ? "#9b2c2c"
-                          : "#123b2a",
-                      }}
-                    >
-                      {hasPain(latestCheckIn)
-                        ? "Känning"
-                        : "Ingen"}
-                    </strong>
-                  </div>
-                </div>
-
-                {hasPain(latestCheckIn) && (
-                  <div
-                    style={{
-                      marginTop: "14px",
-                      padding: "13px",
-                      borderRadius: "12px",
-                      background: "#fff7f7",
-                      border: "1px solid #ead0d0",
-                    }}
-                  >
-                    <strong
-                      style={{
-                        display: "block",
-                        color: "#9b2c2c",
-                        fontSize: "13px",
-                        marginBottom: "5px",
-                      }}
-                    >
-                      🩹 Angiven känning
-                    </strong>
-
-                    <p
-                      style={{
-                        margin: 0,
-                        color: "#8b3434",
-                        lineHeight: "1.5",
-                        whiteSpace: "pre-wrap",
-                      }}
-                    >
-                      {latestCheckIn.pain}
-                    </p>
-                  </div>
-                )}
-
-                {latestCheckIn.moodReason.trim() !== "" && (
-                  <div
-                    style={{
-                      marginTop: "14px",
-                      padding: "13px",
-                      borderRadius: "12px",
-                      background: "#fff8e7",
-                      border: "1px solid #ead9a5",
-                    }}
-                  >
-                    <strong
-                      style={{
-                        display: "block",
-                        color: "#806522",
-                        fontSize: "13px",
-                        marginBottom: "5px",
-                      }}
-                    >
-                      💬 Kommentar om måendet
-                    </strong>
-
-                    <p
-                      style={{
-                        margin: 0,
-                        color: "#5f5743",
-                        lineHeight: "1.5",
-                        whiteSpace: "pre-wrap",
-                      }}
-                    >
-                      {latestCheckIn.moodReason}
-                    </p>
-                  </div>
-                )}
-
-                {latestCheckIn.other.trim() !== "" && (
-                  <div
-                    style={{
-                      marginTop: "14px",
-                      padding: "13px",
-                      borderRadius: "12px",
-                      background: "#f7f8f8",
-                    }}
-                  >
-                    <strong
-                      style={{
-                        display: "block",
-                        color: "#555",
-                        fontSize: "13px",
-                        marginBottom: "5px",
-                      }}
-                    >
-                      📝 Övrigt
-                    </strong>
-
-                    <p
-                      style={{
-                        margin: 0,
-                        color: "#555",
-                        lineHeight: "1.5",
-                        whiteSpace: "pre-wrap",
-                      }}
-                    >
-                      {latestCheckIn.other}
-                    </p>
-                  </div>
-                )}
-              </>
-            ) : (
-              <p
-                style={{
-                  marginBottom: 0,
-                  color: "#666",
-                  lineHeight: "1.5",
-                }}
-              >
-                Spelaren har inte gjort någon
-                check-in ännu.
-              </p>
-            )}
           </section>
 
           <section
             style={{
-              background: "white",
-              borderRadius: "18px",
-              padding: "20px",
-              marginBottom: "30px",
-              boxShadow:
-                "0 2px 8px rgba(0,0,0,0.06)",
+              ...cardStyle,
+              padding: "7px",
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "7px",
             }}
           >
-            <h2 style={{ marginTop: 0 }}>
-              💚 Senaste check-ins
-            </h2>
+            <button
+              onClick={() =>
+                setProfileTab("checkin")
+              }
+              style={{
+                padding: "13px 7px",
+                border: "none",
+                borderRadius: "12px",
+                background:
+                  profileTab === "checkin"
+                    ? "#123b2a"
+                    : "transparent",
+                color:
+                  profileTab === "checkin"
+                    ? "white"
+                    : "#5f6663",
+                fontSize: "13px",
+                fontWeight: "bold",
+                cursor: "pointer",
+              }}
+            >
+              💚 Check-in ({playerCheckIns.length})
+            </button>
 
-            {playerCheckIns.length > 0 ? (
-              playerCheckIns.map((checkIn) => {
-                const checkInStatus =
-                  getStatus(checkIn)
+            <button
+              onClick={() =>
+                setProfileTab("checkout")
+              }
+              style={{
+                padding: "13px 7px",
+                border: "none",
+                borderRadius: "12px",
+                background:
+                  profileTab === "checkout"
+                    ? "#123b2a"
+                    : "transparent",
+                color:
+                  profileTab === "checkout"
+                    ? "white"
+                    : "#5f6663",
+                fontSize: "13px",
+                fontWeight: "bold",
+                cursor: "pointer",
+              }}
+            >
+              👋 Check-out ({playerCheckOuts.length})
+            </button>
+          </section>
 
-                return (
+          {profileTab === "checkin" ? (
+            <>
+              <div
+                style={{
+                  margin: "5px 0 14px",
+                }}
+              >
+                <p
+                  style={{
+                    margin: "0 0 5px",
+                    color: "#123b2a",
+                    fontSize: "12px",
+                    fontWeight: "bold",
+                    letterSpacing: "0.8px",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Före träning
+                </p>
+
+                <h2
+                  style={{
+                    margin: 0,
+                    fontSize: "22px",
+                  }}
+                >
+                  Senaste check-in
+                </h2>
+              </div>
+
+              {latestCheckIn ? (
+                <section
+                  style={{
+                    ...cardStyle,
+                    borderTop: `4px solid ${status.color}`,
+                  }}
+                >
                   <div
-                    key={checkIn.id}
                     style={{
-                      padding: "14px 0",
-                      borderBottom:
-                        "1px solid #eeeeee",
+                      display: "flex",
+                      justifyContent:
+                        "space-between",
+                      alignItems: "flex-start",
+                      gap: "10px",
+                      marginBottom: "18px",
+                    }}
+                  >
+                    <div>
+                      <p
+                        style={{
+                          margin: 0,
+                          color: "#6b7280",
+                          fontSize: "12px",
+                        }}
+                      >
+                        Senast inskickad
+                      </p>
+
+                      <p
+                        style={{
+                          margin: "4px 0 0",
+                          color: "#17202a",
+                          fontSize: "13px",
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {formatResponseTime(
+                          latestCheckIn.date
+                        )}
+                      </p>
+                    </div>
+
+                    <span
+                      style={{
+                        background:
+                          status.background,
+                        color: status.color,
+                        border: `1px solid ${status.border}`,
+                        borderRadius: "999px",
+                        padding: "7px 9px",
+                        fontSize: "10px",
+                        fontWeight: "bold",
+                        textAlign: "center",
+                      }}
+                    >
+                      {status.text}
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "repeat(3, 1fr)",
+                      gap: "8px",
                     }}
                   >
                     <div
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "12px",
+                        background: "#f7f9f8",
+                        borderRadius: "14px",
+                        padding: "15px 5px",
+                        textAlign: "center",
                       }}
                     >
-                      <span
+                      <div
                         style={{
-                          fontSize: "26px",
+                          fontSize: "30px",
+                          marginBottom: "7px",
                         }}
                       >
                         {getMoodEmoji(
-                          checkIn.mood
+                          latestCheckIn.mood
                         )}
-                      </span>
-
-                      <div
-                        style={{
-                          flex: 1,
-                        }}
-                      >
-                        <strong
-                          style={{
-                            display: "block",
-                            fontSize: "14px",
-                          }}
-                        >
-                          {getMoodText(
-                            checkIn.mood
-                          )}{" "}
-                          • Energi{" "}
-                          {checkIn.energy ?? "–"}/5
-                        </strong>
-
-                        <div
-                          style={{
-                            marginTop: "3px",
-                            color: "#6b7280",
-                            fontSize: "12px",
-                          }}
-                        >
-                          {formatCheckInTime(
-                            checkIn.date
-                          )}
-                        </div>
                       </div>
 
-                      {hasPain(checkIn) && (
-                        <span
-                          title="Spelaren har angett en känning"
-                          style={{
-                            fontSize: "19px",
-                          }}
-                        >
-                          ⚠️
-                        </span>
-                      )}
+                      <p
+                        style={{
+                          margin: "0 0 4px",
+                          color: "#6b7280",
+                          fontSize: "10px",
+                        }}
+                      >
+                        Mående
+                      </p>
+
+                      <strong
+                        style={{
+                          fontSize: "11px",
+                        }}
+                      >
+                        {getMoodText(
+                          latestCheckIn.mood
+                        )}
+                      </strong>
                     </div>
 
                     <div
                       style={{
-                        marginTop: "9px",
+                        background: "#f7f9f8",
+                        borderRadius: "14px",
+                        padding: "15px 5px",
+                        textAlign: "center",
                       }}
                     >
-                      <span
+                      <div
                         style={{
-                          background:
-                            checkInStatus.background,
-                          color:
-                            checkInStatus.color,
-                          borderRadius: "999px",
-                          padding: "5px 8px",
-                          fontSize: "10px",
-                          fontWeight: "bold",
+                          fontSize: "30px",
+                          marginBottom: "7px",
                         }}
                       >
-                        {checkInStatus.text}
-                      </span>
+                        {getEnergyEmoji(
+                          latestCheckIn.energy
+                        )}
+                      </div>
+
+                      <p
+                        style={{
+                          margin: "0 0 4px",
+                          color: "#6b7280",
+                          fontSize: "10px",
+                        }}
+                      >
+                        Energi
+                      </p>
+
+                      <strong
+                        style={{
+                          fontSize: "11px",
+                        }}
+                      >
+                        {latestCheckIn.energy ?? "–"}/5
+                      </strong>
+                    </div>
+
+                    <div
+                      style={{
+                        background: hasPain(
+                          latestCheckIn
+                        )
+                          ? "#fff1f1"
+                          : "#f7f9f8",
+                        borderRadius: "14px",
+                        padding: "15px 5px",
+                        textAlign: "center",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: "30px",
+                          marginBottom: "7px",
+                        }}
+                      >
+                        {hasPain(latestCheckIn)
+                          ? "⚠️"
+                          : "✓"}
+                      </div>
+
+                      <p
+                        style={{
+                          margin: "0 0 4px",
+                          color: "#6b7280",
+                          fontSize: "10px",
+                        }}
+                      >
+                        Känning
+                      </p>
+
+                      <strong
+                        style={{
+                          color: hasPain(
+                            latestCheckIn
+                          )
+                            ? "#9b2c2c"
+                            : "#123b2a",
+                          fontSize: "11px",
+                        }}
+                      >
+                        {hasPain(latestCheckIn)
+                          ? "Angiven"
+                          : "Ingen"}
+                      </strong>
                     </div>
                   </div>
-                )
-              })
-            ) : (
-              <p
-                style={{
-                  marginBottom: 0,
-                  color: "#666",
-                }}
-              >
-                Ingen check-in-historik ännu.
-              </p>
-            )}
 
-            {playerCheckIns.length > 0 && (
-              <p
+                  {hasPain(latestCheckIn) && (
+                    <div
+                      style={{
+                        marginTop: "14px",
+                        padding: "13px",
+                        borderRadius: "12px",
+                        background: "#fff7f7",
+                        border:
+                          "1px solid #ead0d0",
+                      }}
+                    >
+                      <strong
+                        style={{
+                          display: "block",
+                          color: "#9b2c2c",
+                          fontSize: "12px",
+                          marginBottom: "5px",
+                        }}
+                      >
+                        🩹 Angiven känning
+                      </strong>
+
+                      <p
+                        style={{
+                          margin: 0,
+                          color: "#8b3434",
+                          lineHeight: "1.5",
+                          whiteSpace: "pre-wrap",
+                          fontSize: "14px",
+                        }}
+                      >
+                        {latestCheckIn.pain}
+                      </p>
+                    </div>
+                  )}
+
+                  {latestCheckIn.moodReason
+                    ?.trim() !== "" && (
+                    <div
+                      style={{
+                        marginTop: "14px",
+                        padding: "13px",
+                        borderRadius: "12px",
+                        background: "#fff8e7",
+                        border:
+                          "1px solid #ead9a5",
+                      }}
+                    >
+                      <strong
+                        style={{
+                          display: "block",
+                          color: "#806522",
+                          fontSize: "12px",
+                          marginBottom: "5px",
+                        }}
+                      >
+                        💬 Kommentar om måendet
+                      </strong>
+
+                      <p
+                        style={{
+                          margin: 0,
+                          color: "#5f5743",
+                          lineHeight: "1.5",
+                          whiteSpace: "pre-wrap",
+                          fontSize: "14px",
+                        }}
+                      >
+                        {latestCheckIn.moodReason}
+                      </p>
+                    </div>
+                  )}
+
+                  {latestCheckIn.other?.trim() !==
+                    "" && (
+                    <div
+                      style={{
+                        marginTop: "14px",
+                        padding: "13px",
+                        borderRadius: "12px",
+                        background: "#f7f9f8",
+                      }}
+                    >
+                      <strong
+                        style={{
+                          display: "block",
+                          color: "#555",
+                          fontSize: "12px",
+                          marginBottom: "5px",
+                        }}
+                      >
+                        📝 Övrigt
+                      </strong>
+
+                      <p
+                        style={{
+                          margin: 0,
+                          color: "#555",
+                          lineHeight: "1.5",
+                          whiteSpace: "pre-wrap",
+                          fontSize: "14px",
+                        }}
+                      >
+                        {latestCheckIn.other}
+                      </p>
+                    </div>
+                  )}
+                </section>
+              ) : (
+                <section
+                  style={{
+                    ...cardStyle,
+                    textAlign: "center",
+                    padding: "30px 20px",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: "38px",
+                      marginBottom: "10px",
+                    }}
+                  >
+                    💚
+                  </div>
+
+                  <h3
+                    style={{
+                      margin: "0 0 7px",
+                      color: "#123b2a",
+                    }}
+                  >
+                    Ingen check-in ännu
+                  </h3>
+
+                  <p
+                    style={{
+                      margin: 0,
+                      color: "#666",
+                    }}
+                  >
+                    Spelaren har ännu inte lämnat
+                    någon check-in.
+                  </p>
+                </section>
+              )}
+
+              <div
                 style={{
-                  margin: "16px 0 0",
-                  color: "#6b7280",
-                  fontSize: "12px",
-                  lineHeight: "1.5",
+                  margin: "25px 0 13px",
                 }}
               >
-                I den färdiga appen visas endast
-                check-ins som fortfarande finns inom
-                lagets gallringsperiod.
-              </p>
-            )}
-          </section>
+                <p
+                  style={{
+                    margin: "0 0 5px",
+                    color: "#123b2a",
+                    fontSize: "12px",
+                    fontWeight: "bold",
+                    letterSpacing: "0.8px",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Historik
+                </p>
+
+                <h2
+                  style={{
+                    margin: 0,
+                    fontSize: "21px",
+                  }}
+                >
+                  Senaste check-ins
+                </h2>
+              </div>
+
+              {playerCheckIns.length > 0 ? (
+                playerCheckIns.map((checkIn) => {
+                  const checkInStatus =
+                    getStatus(checkIn)
+
+                  return (
+                    <section
+                      key={checkIn.id}
+                      style={{
+                        ...cardStyle,
+                        padding: "16px",
+                        marginBottom: "10px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "12px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: "43px",
+                            height: "43px",
+                            minWidth: "43px",
+                            borderRadius: "13px",
+                            background: "#f4f6f5",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "24px",
+                          }}
+                        >
+                          {getMoodEmoji(
+                            checkIn.mood
+                          )}
+                        </div>
+
+                        <div style={{ flex: 1 }}>
+                          <strong
+                            style={{
+                              display: "block",
+                              color: "#123b2a",
+                              fontSize: "14px",
+                              marginBottom: "4px",
+                            }}
+                          >
+                            {getMoodText(
+                              checkIn.mood
+                            )}{" "}
+                            • Energi{" "}
+                            {checkIn.energy ?? "–"}/5
+                          </strong>
+
+                          <span
+                            style={{
+                              color: "#6b7280",
+                              fontSize: "11px",
+                            }}
+                          >
+                            {formatResponseTime(
+                              checkIn.date
+                            )}
+                          </span>
+                        </div>
+
+                        {hasPain(checkIn) && (
+                          <span
+                            style={{
+                              fontSize: "18px",
+                            }}
+                          >
+                            ⚠️
+                          </span>
+                        )}
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: "10px",
+                        }}
+                      >
+                        <span
+                          style={{
+                            display:
+                              "inline-block",
+                            background:
+                              checkInStatus.background,
+                            color:
+                              checkInStatus.color,
+                            border: `1px solid ${checkInStatus.border}`,
+                            borderRadius: "999px",
+                            padding: "5px 8px",
+                            fontSize: "9px",
+                            fontWeight: "bold",
+                          }}
+                        >
+                          {checkInStatus.text}
+                        </span>
+                      </div>
+                    </section>
+                  )
+                })
+              ) : (
+                <section style={cardStyle}>
+                  <p
+                    style={{
+                      margin: 0,
+                      color: "#666",
+                    }}
+                  >
+                    Ingen check-in-historik ännu.
+                  </p>
+                </section>
+              )}
+            </>
+          ) : (
+            <>
+              <div
+                style={{
+                  margin: "5px 0 14px",
+                }}
+              >
+                <p
+                  style={{
+                    margin: "0 0 5px",
+                    color: "#123b2a",
+                    fontSize: "12px",
+                    fontWeight: "bold",
+                    letterSpacing: "0.8px",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Efter träning
+                </p>
+
+                <h2
+                  style={{
+                    margin: 0,
+                    fontSize: "22px",
+                  }}
+                >
+                  Senaste check-out
+                </h2>
+              </div>
+
+              {latestCheckOut ? (
+                <section
+                  style={{
+                    ...cardStyle,
+                    borderTop:
+                      "4px solid #f39200",
+                  }}
+                >
+                  <p
+                    style={{
+                      margin: "0 0 17px",
+                      color: "#6b7280",
+                      fontSize: "12px",
+                    }}
+                  >
+                    {formatResponseTime(
+                      latestCheckOut.date
+                    )}
+                  </p>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "repeat(3, 1fr)",
+                      gap: "8px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        background: "#f7f9f8",
+                        borderRadius: "14px",
+                        padding: "15px 4px",
+                        textAlign: "center",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: "29px",
+                          marginBottom: "7px",
+                        }}
+                      >
+                        {getFeelingEmoji(
+                          latestCheckOut.feeling
+                        )}
+                      </div>
+
+                      <p
+                        style={{
+                          margin: "0 0 4px",
+                          color: "#6b7280",
+                          fontSize: "9px",
+                        }}
+                      >
+                        Känsla
+                      </p>
+
+                      <strong
+                        style={{
+                          fontSize: "12px",
+                        }}
+                      >
+                        {latestCheckOut.feeling}/5
+                      </strong>
+                    </div>
+
+                    <div
+                      style={{
+                        background: "#f7f9f8",
+                        borderRadius: "14px",
+                        padding: "15px 4px",
+                        textAlign: "center",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: "29px",
+                          marginBottom: "7px",
+                        }}
+                      >
+                        🔥
+                      </div>
+
+                      <p
+                        style={{
+                          margin: "0 0 4px",
+                          color: "#6b7280",
+                          fontSize: "9px",
+                        }}
+                      >
+                        Ansträngning
+                      </p>
+
+                      <strong
+                        style={{
+                          fontSize: "12px",
+                        }}
+                      >
+                        {latestCheckOut.effort}/5
+                      </strong>
+                    </div>
+
+                    <div
+                      style={{
+                        background: "#f7f9f8",
+                        borderRadius: "14px",
+                        padding: "15px 4px",
+                        textAlign: "center",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: "29px",
+                          marginBottom: "7px",
+                        }}
+                      >
+                        💪
+                      </div>
+
+                      <p
+                        style={{
+                          margin: "0 0 4px",
+                          color: "#6b7280",
+                          fontSize: "9px",
+                        }}
+                      >
+                        Kropp
+                      </p>
+
+                      <strong
+                        style={{
+                          fontSize: "12px",
+                        }}
+                      >
+                        {latestCheckOut.body}/5
+                      </strong>
+                    </div>
+                  </div>
+
+                  {latestCheckOut.comment?.trim() !==
+                    "" && (
+                    <div
+                      style={{
+                        marginTop: "14px",
+                        padding: "13px",
+                        borderRadius: "12px",
+                        background: "#fff8e7",
+                        border:
+                          "1px solid #ead9a5",
+                      }}
+                    >
+                      <strong
+                        style={{
+                          display: "block",
+                          color: "#806522",
+                          fontSize: "12px",
+                          marginBottom: "5px",
+                        }}
+                      >
+                        💬 Kommentar
+                      </strong>
+
+                      <p
+                        style={{
+                          margin: 0,
+                          color: "#5f5743",
+                          lineHeight: "1.5",
+                          whiteSpace: "pre-wrap",
+                          fontSize: "14px",
+                        }}
+                      >
+                        {latestCheckOut.comment}
+                      </p>
+                    </div>
+                  )}
+                </section>
+              ) : (
+                <section
+                  style={{
+                    ...cardStyle,
+                    textAlign: "center",
+                    padding: "30px 20px",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: "38px",
+                      marginBottom: "10px",
+                    }}
+                  >
+                    👋
+                  </div>
+
+                  <h3
+                    style={{
+                      margin: "0 0 7px",
+                      color: "#123b2a",
+                    }}
+                  >
+                    Ingen check-out ännu
+                  </h3>
+
+                  <p
+                    style={{
+                      margin: 0,
+                      color: "#666",
+                    }}
+                  >
+                    Spelaren har ännu inte lämnat
+                    någon check-out.
+                  </p>
+                </section>
+              )}
+
+              <div
+                style={{
+                  margin: "25px 0 13px",
+                }}
+              >
+                <p
+                  style={{
+                    margin: "0 0 5px",
+                    color: "#123b2a",
+                    fontSize: "12px",
+                    fontWeight: "bold",
+                    letterSpacing: "0.8px",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Historik
+                </p>
+
+                <h2
+                  style={{
+                    margin: 0,
+                    fontSize: "21px",
+                  }}
+                >
+                  Senaste check-outs
+                </h2>
+              </div>
+
+              {playerCheckOuts.length > 0 ? (
+                playerCheckOuts.map(
+                  (checkOut) => (
+                    <section
+                      key={checkOut.id}
+                      style={{
+                        ...cardStyle,
+                        padding: "16px",
+                        marginBottom: "10px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "12px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: "43px",
+                            height: "43px",
+                            minWidth: "43px",
+                            borderRadius: "13px",
+                            background: "#f4f6f5",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "24px",
+                          }}
+                        >
+                          {getFeelingEmoji(
+                            checkOut.feeling
+                          )}
+                        </div>
+
+                        <div style={{ flex: 1 }}>
+                          <strong
+                            style={{
+                              display: "block",
+                              color: "#123b2a",
+                              fontSize: "14px",
+                              marginBottom: "4px",
+                            }}
+                          >
+                            Känsla{" "}
+                            {checkOut.feeling}/5
+                          </strong>
+
+                          <span
+                            style={{
+                              display: "block",
+                              color: "#6b7280",
+                              fontSize: "11px",
+                              lineHeight: "1.5",
+                            }}
+                          >
+                            Ansträngning{" "}
+                            {checkOut.effort}/5 •
+                            Kropp{" "}
+                            {checkOut.body}/5
+                          </span>
+
+                          <span
+                            style={{
+                              display: "block",
+                              marginTop: "3px",
+                              color: "#9aa29d",
+                              fontSize: "10px",
+                            }}
+                          >
+                            {formatResponseTime(
+                              checkOut.date
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    </section>
+                  )
+                )
+              ) : (
+                <section style={cardStyle}>
+                  <p
+                    style={{
+                      margin: 0,
+                      color: "#666",
+                    }}
+                  >
+                    Ingen check-out-historik ännu.
+                  </p>
+                </section>
+              )}
+            </>
+          )}
+
+          {(playerCheckIns.length > 0 ||
+            playerCheckOuts.length > 0) && (
+            <p
+              style={{
+                margin: "20px 5px 25px",
+                color: "#8b938e",
+                fontSize: "11px",
+                lineHeight: "1.5",
+                textAlign: "center",
+              }}
+            >
+              I den färdiga appen visas individuella
+              svar endast så länge de finns kvar inom
+              lagets gallringsperiod.
+            </p>
+          )}
+
+          <p
+            style={{
+              margin: "0 0 20px",
+              textAlign: "center",
+              color: "#9aa29d",
+              fontSize: "11px",
+              letterSpacing: "0.5px",
+            }}
+          >
+            HOVSTA IF • LEDARLÄGE
+          </p>
         </main>
       </div>
     )
   }
 
-  /*
-    TRUPPÖVERSIKT
-  */
+  const playersWithAttention = players.filter(
+    (player) => {
+      const latest = getLatestCheckIn(player)
+
+      if (!latest) return false
+
+      return (
+        getStatus(latest).text ===
+        "Behöver uppmärksamhet"
+      )
+    }
+  ).length
+
+  const playersToFollowUp = players.filter(
+    (player) => {
+      const latest = getLatestCheckIn(player)
+
+      if (!latest) return false
+
+      return getStatus(latest).text === "Följ upp"
+    }
+  ).length
+
+  const playersWithCheckIn = players.filter(
+    (player) => getLatestCheckIn(player) !== null
+  ).length
+
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#f4f6f8",
-        fontFamily: "Arial, sans-serif",
-        color: "#17202a",
-      }}
-    >
-      <header
-        style={{
-          background: "#123b2a",
-          color: "white",
-          padding: "24px 20px",
-          borderRadius: "0 0 24px 24px",
-        }}
-      >
-        <button
-          onClick={onBack}
-          style={{
-            background: "rgba(255,255,255,0.15)",
-            color: "white",
-            border:
-              "1px solid rgba(255,255,255,0.3)",
-            borderRadius: "10px",
-            padding: "9px 13px",
-            cursor: "pointer",
-            marginBottom: "18px",
-          }}
-        >
-          ← Tillbaka
-        </button>
+    <div style={pageStyle}>
+      <Header
+        eyebrow="Hovsta IF • Ledarläge"
+        title="Spelare 👥"
+        subtitle="Truppöversikt och aktuell spelarstatus."
+        onHeaderBack={onBack}
+      />
 
-        <p
-          style={{
-            margin: 0,
-            fontSize: "13px",
-            opacity: 0.8,
-          }}
-        >
-          HOVSTA IF • LEDARLÄGE
-        </p>
-
-        <h1
-          style={{
-            margin: "8px 0 4px",
-            fontSize: "28px",
-          }}
-        >
-          Spelare 👥
-        </h1>
-
-        <p
-          style={{
-            margin: 0,
-            opacity: 0.9,
-          }}
-        >
-          Truppöversikt och spelarstatus
-        </p>
-      </header>
-
-      <main
-        style={{
-          maxWidth: "600px",
-          margin: "0 auto",
-          padding: "20px",
-        }}
-      >
+      <main style={mainStyle}>
         <section
           style={{
-            background: "white",
-            borderRadius: "18px",
-            padding: "20px",
-            marginBottom: "18px",
-            boxShadow:
-              "0 2px 8px rgba(0,0,0,0.06)",
+            ...cardStyle,
+            borderTop: "4px solid #f39200",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              gap: "15px",
+              marginBottom: "17px",
+            }}
+          >
+            <div>
+              <p
+                style={{
+                  margin: "0 0 5px",
+                  color: "#6b7280",
+                  fontSize: "11px",
+                  fontWeight: "bold",
+                  letterSpacing: "0.8px",
+                  textTransform: "uppercase",
+                }}
+              >
+                Truppen
+              </p>
+
+              <h2
+                style={{
+                  margin: 0,
+                  color: "#123b2a",
+                  fontSize: "22px",
+                }}
+              >
+                {players.length} spelare
+              </h2>
+            </div>
+
+            <span
+              style={{
+                background: "#edf4f0",
+                color: "#123b2a",
+                borderRadius: "999px",
+                padding: "7px 10px",
+                fontSize: "11px",
+                fontWeight: "bold",
+              }}
+            >
+              Testtrupp
+            </span>
+          </div>
+
+          <p
+            style={{
+              margin: "0 0 17px",
+              color: "#6b7280",
+              fontSize: "13px",
+              lineHeight: "1.5",
+            }}
+          >
+            Testspelarna ersätts senare av riktiga
+            spelarkonton.
+          </p>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "repeat(3, 1fr)",
+              gap: "8px",
+            }}
+          >
+            <div
+              style={{
+                background: "#edf4f0",
+                borderRadius: "13px",
+                padding: "12px 5px",
+                textAlign: "center",
+              }}
+            >
+              <strong
+                style={{
+                  display: "block",
+                  color: "#123b2a",
+                  fontSize: "20px",
+                  marginBottom: "3px",
+                }}
+              >
+                {playersWithCheckIn}
+              </strong>
+
+              <span
+                style={{
+                  color: "#526158",
+                  fontSize: "9px",
+                }}
+              >
+                Med check-in
+              </span>
+            </div>
+
+            <div
+              style={{
+                background: "#fff8e7",
+                borderRadius: "13px",
+                padding: "12px 5px",
+                textAlign: "center",
+              }}
+            >
+              <strong
+                style={{
+                  display: "block",
+                  color: "#806522",
+                  fontSize: "20px",
+                  marginBottom: "3px",
+                }}
+              >
+                {playersToFollowUp}
+              </strong>
+
+              <span
+                style={{
+                  color: "#806522",
+                  fontSize: "9px",
+                }}
+              >
+                Följ upp
+              </span>
+            </div>
+
+            <div
+              style={{
+                background: "#fff1f1",
+                borderRadius: "13px",
+                padding: "12px 5px",
+                textAlign: "center",
+              }}
+            >
+              <strong
+                style={{
+                  display: "block",
+                  color: "#9b2c2c",
+                  fontSize: "20px",
+                  marginBottom: "3px",
+                }}
+              >
+                {playersWithAttention}
+              </strong>
+
+              <span
+                style={{
+                  color: "#9b2c2c",
+                  fontSize: "9px",
+                }}
+              >
+                Uppmärksamma
+              </span>
+            </div>
+          </div>
+        </section>
+
+        <div
+          style={{
+            margin: "25px 0 14px",
           }}
         >
           <p
             style={{
-              margin: 0,
-              fontSize: "13px",
-              color: "#6b7280",
+              margin: "0 0 5px",
+              color: "#123b2a",
+              fontSize: "12px",
+              fontWeight: "bold",
+              letterSpacing: "0.8px",
               textTransform: "uppercase",
             }}
           >
-            Truppen
+            Trupp
           </p>
 
           <h2
             style={{
-              margin: "8px 0 4px",
-              color: "#123b2a",
-            }}
-          >
-            {players.length} spelare
-          </h2>
-
-          <p
-            style={{
               margin: 0,
-              color: "#666",
+              fontSize: "22px",
             }}
           >
-            Testtrupp – ersätts senare av riktiga
-            spelarkonton.
-          </p>
-        </section>
+            Alla spelare
+          </h2>
+        </div>
 
         {players.map((player) => {
           const latestCheckIn =
             getLatestCheckIn(player)
 
-          const status = getStatus(latestCheckIn)
+          const latestCheckOut =
+            getLatestCheckOut(player)
+
+          const status =
+            getStatus(latestCheckIn)
 
           return (
             <button
               key={player.id}
-              onClick={() =>
+              onClick={() => {
                 setSelectedPlayer(player)
-              }
+                setProfileTab("checkin")
+              }}
               style={{
                 width: "100%",
                 display: "block",
                 textAlign: "left",
                 background: "white",
-                border: "none",
+                border: `1px solid ${status.border}`,
                 borderRadius: "18px",
-                padding: "18px",
-                marginBottom: "12px",
+                padding: "17px",
+                marginBottom: "11px",
                 boxShadow:
-                  "0 2px 8px rgba(0,0,0,0.06)",
+                  "0 3px 12px rgba(18,59,42,0.06)",
                 cursor: "pointer",
                 color: "#17202a",
               }}
@@ -918,17 +1720,17 @@ function Players({ onBack }: PlayersProps) {
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "14px",
+                  gap: "13px",
                 }}
               >
                 <div
                   style={{
-                    width: "48px",
-                    height: "48px",
-                    minWidth: "48px",
-                    borderRadius: "50%",
-                    background: "#e7f1eb",
-                    color: "#123b2a",
+                    width: "50px",
+                    height: "50px",
+                    minWidth: "50px",
+                    borderRadius: "15px",
+                    background: "#123b2a",
+                    color: "white",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -942,13 +1744,14 @@ function Players({ onBack }: PlayersProps) {
                 <div
                   style={{
                     flex: 1,
+                    minWidth: 0,
                   }}
                 >
                   <h3
                     style={{
                       margin: "0 0 4px",
                       color: "#123b2a",
-                      fontSize: "18px",
+                      fontSize: "17px",
                     }}
                   >
                     {player.name}
@@ -958,7 +1761,7 @@ function Players({ onBack }: PlayersProps) {
                     style={{
                       margin: 0,
                       color: "#6b7280",
-                      fontSize: "13px",
+                      fontSize: "12px",
                     }}
                   >
                     #{player.number} •{" "}
@@ -966,9 +1769,9 @@ function Players({ onBack }: PlayersProps) {
                   </p>
                 </div>
 
-                <span
+                <div
                   style={{
-                    fontSize: "24px",
+                    fontSize: "26px",
                   }}
                 >
                   {latestCheckIn
@@ -976,27 +1779,28 @@ function Players({ onBack }: PlayersProps) {
                         latestCheckIn.mood
                       )
                     : "–"}
-                </span>
+                </div>
               </div>
 
               <div
                 style={{
                   marginTop: "14px",
                   paddingTop: "12px",
-                  borderTop: "1px solid #eee",
+                  borderTop: "1px solid #edf0ee",
                   display: "flex",
-                  justifyContent: "space-between",
                   alignItems: "center",
-                  gap: "10px",
+                  gap: "7px",
+                  flexWrap: "wrap",
                 }}
               >
                 <span
                   style={{
-                    background: status.background,
+                    background:
+                      status.background,
                     color: status.color,
                     borderRadius: "999px",
-                    padding: "6px 9px",
-                    fontSize: "11px",
+                    padding: "6px 8px",
+                    fontSize: "9px",
                     fontWeight: "bold",
                   }}
                 >
@@ -1006,30 +1810,75 @@ function Players({ onBack }: PlayersProps) {
                 {latestCheckIn && (
                   <span
                     style={{
-                      color: "#555",
-                      fontSize: "12px",
+                      background: "#f4f6f5",
+                      color: "#526158",
+                      borderRadius: "999px",
+                      padding: "6px 8px",
+                      fontSize: "9px",
+                      fontWeight: "bold",
                     }}
                   >
-                    {latestCheckIn.energy ?? "–"}/5 ⚡
-                    {hasPain(latestCheckIn)
-                      ? " • ⚠️"
-                      : ""}
+                    ⚡ {latestCheckIn.energy ?? "–"}/5
                   </span>
                 )}
 
+                {latestCheckOut && (
+                  <span
+                    style={{
+                      background: "#fff4e5",
+                      color: "#8a5700",
+                      borderRadius: "999px",
+                      padding: "6px 8px",
+                      fontSize: "9px",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    👋 Check-out
+                  </span>
+                )}
+
+                {latestCheckIn &&
+                  hasPain(latestCheckIn) && (
+                    <span
+                      style={{
+                        background: "#fff1f1",
+                        color: "#9b2c2c",
+                        borderRadius: "999px",
+                        padding: "6px 8px",
+                        fontSize: "9px",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      🩹 Känning
+                    </span>
+                  )}
+
                 <span
                   style={{
+                    marginLeft: "auto",
                     color: "#123b2a",
-                    fontSize: "13px",
+                    fontSize: "18px",
                     fontWeight: "bold",
                   }}
                 >
-                  Öppna →
+                  ›
                 </span>
               </div>
             </button>
           )
         })}
+
+        <p
+          style={{
+            margin: "24px 0 20px",
+            textAlign: "center",
+            color: "#9aa29d",
+            fontSize: "11px",
+            letterSpacing: "0.5px",
+          }}
+        >
+          HOVSTA IF • LEDARLÄGE
+        </p>
       </main>
     </div>
   )

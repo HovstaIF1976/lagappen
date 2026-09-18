@@ -179,12 +179,41 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
     }, 1500)
   }
 
+  const cardStyle: React.CSSProperties = {
+    background: "white",
+    borderRadius: "18px",
+    padding: "20px",
+    marginBottom: "16px",
+    boxShadow: "0 3px 14px rgba(18,59,42,0.07)",
+    border: "1px solid #edf0ee",
+  }
+
+  const labelStyle: React.CSSProperties = {
+    display: "block",
+    fontWeight: "bold",
+    marginBottom: "7px",
+    color: "#29332e",
+    fontSize: "14px",
+  }
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    boxSizing: "border-box",
+    padding: "13px",
+    borderRadius: "11px",
+    border: "1px solid #d7ddd9",
+    fontSize: "16px",
+    background: "white",
+    color: "#17202a",
+    outlineColor: "#123b2a",
+  }
+
   if (saved) {
     return (
       <div
         style={{
           minHeight: "100vh",
-          background: "#f4f6f8",
+          background: "#f4f6f5",
           fontFamily: "Arial, sans-serif",
           display: "flex",
           alignItems: "center",
@@ -199,49 +228,75 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
             maxWidth: "420px",
             background: "white",
             borderRadius: "24px",
-            padding: "40px 24px",
+            overflow: "hidden",
             textAlign: "center",
-            boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
+            boxShadow: "0 8px 28px rgba(18,59,42,0.12)",
+            border: "1px solid #edf0ee",
           }}
         >
           <div
             style={{
-              width: "70px",
-              height: "70px",
-              margin: "0 auto 20px",
-              borderRadius: "50%",
-              background: "#e7f1eb",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#123b2a",
-              fontSize: "34px",
-              fontWeight: "bold",
+              height: "5px",
+              background: "#f39200",
+            }}
+          />
+
+          <div
+            style={{
+              padding: "40px 24px",
             }}
           >
-            ✓
+            <div
+              style={{
+                width: "70px",
+                height: "70px",
+                margin: "0 auto 20px",
+                borderRadius: "50%",
+                background: "#e7f1eb",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#123b2a",
+                fontSize: "34px",
+                fontWeight: "bold",
+              }}
+            >
+              ✓
+            </div>
+
+            <p
+              style={{
+                margin: "0 0 7px",
+                color: "#f39200",
+                fontSize: "12px",
+                fontWeight: "bold",
+                letterSpacing: "1px",
+              }}
+            >
+              HOVSTA IF
+            </p>
+
+            <h1
+              style={{
+                margin: "0 0 10px",
+                color: "#123b2a",
+                fontSize: "26px",
+              }}
+            >
+              Träningen är sparad!
+            </h1>
+
+            <p
+              style={{
+                margin: 0,
+                color: "#5f6663",
+                lineHeight: "1.5",
+              }}
+            >
+              Träningspasset har lagts till i lagets
+              träningsplanering.
+            </p>
           </div>
-
-          <h1
-            style={{
-              margin: "0 0 10px",
-              color: "#123b2a",
-              fontSize: "26px",
-            }}
-          >
-            Träningen är sparad!
-          </h1>
-
-          <p
-            style={{
-              margin: 0,
-              color: "#666",
-              lineHeight: "1.5",
-            }}
-          >
-            Träningspasset har lagts till i lagets
-            träningsplanering.
-          </p>
         </div>
       </div>
     )
@@ -251,7 +306,7 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
     <div
       style={{
         minHeight: "100vh",
-        background: "#f4f6f8",
+        background: "#f4f6f5",
         fontFamily: "Arial, sans-serif",
         color: "#17202a",
       }}
@@ -260,52 +315,75 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
         style={{
           background: "#123b2a",
           color: "white",
-          padding: "24px 20px",
-          borderRadius: "0 0 24px 24px",
+          borderRadius: "0 0 28px 28px",
+          overflow: "hidden",
+          boxShadow: "0 5px 18px rgba(18,59,42,0.18)",
         }}
       >
-        <button
-          onClick={onBack}
+        <div
           style={{
-            background: "rgba(255,255,255,0.15)",
-            color: "white",
-            border: "1px solid rgba(255,255,255,0.3)",
-            borderRadius: "10px",
-            padding: "9px 13px",
-            cursor: "pointer",
-            marginBottom: "18px",
+            height: "5px",
+            background: "#f39200",
           }}
-        >
-          ← Tillbaka
-        </button>
+        />
 
-        <p
+        <div
           style={{
-            margin: 0,
-            fontSize: "13px",
-            opacity: 0.8,
+            maxWidth: "600px",
+            margin: "0 auto",
+            padding: "20px 20px 27px",
           }}
         >
-          HOVSTA IF • LEDARLÄGE
-        </p>
+          <button
+            onClick={onBack}
+            style={{
+              background: "rgba(255,255,255,0.1)",
+              color: "white",
+              border: "1px solid rgba(255,255,255,0.22)",
+              borderRadius: "10px",
+              padding: "9px 13px",
+              cursor: "pointer",
+              marginBottom: "22px",
+              fontSize: "14px",
+              fontWeight: "bold",
+            }}
+          >
+            ← Tillbaka
+          </button>
 
-        <h1
-          style={{
-            margin: "8px 0 4px",
-            fontSize: "28px",
-          }}
-        >
-          Skapa träning ⚽
-        </h1>
+          <p
+            style={{
+              margin: 0,
+              color: "#f39200",
+              fontSize: "13px",
+              fontWeight: "bold",
+              letterSpacing: "1px",
+            }}
+          >
+            HOVSTA IF • LEDARLÄGE
+          </p>
 
-        <p
-          style={{
-            margin: 0,
-            opacity: 0.9,
-          }}
-        >
-          Planera och publicera ett nytt träningspass
-        </p>
+          <h1
+            style={{
+              margin: "8px 0 6px",
+              fontSize: "29px",
+              letterSpacing: "-0.5px",
+            }}
+          >
+            Skapa träning ⚽
+          </h1>
+
+          <p
+            style={{
+              margin: 0,
+              color: "#dbe6df",
+              fontSize: "15px",
+              lineHeight: "1.5",
+            }}
+          >
+            Planera och publicera ett nytt träningspass.
+          </p>
+        </div>
       </header>
 
       <main
@@ -317,24 +395,34 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
       >
         <section
           style={{
-            background: "white",
-            borderRadius: "18px",
-            padding: "20px",
-            marginBottom: "16px",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+            ...cardStyle,
+            borderTop: "4px solid #f39200",
           }}
         >
-          <h2 style={{ marginTop: 0 }}>
+          <p
+            style={{
+              margin: "0 0 6px",
+              color: "#6b7280",
+              fontSize: "12px",
+              fontWeight: "bold",
+              letterSpacing: "0.7px",
+              textTransform: "uppercase",
+            }}
+          >
+            Grundinformation
+          </p>
+
+          <h2
+            style={{
+              margin: "0 0 20px",
+              color: "#123b2a",
+              fontSize: "21px",
+            }}
+          >
             📅 När är träningen?
           </h2>
 
-          <label
-            style={{
-              display: "block",
-              fontWeight: "bold",
-              marginBottom: "7px",
-            }}
-          >
+          <label style={labelStyle}>
             Datum
           </label>
 
@@ -343,23 +431,12 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
             value={date}
             onChange={(e) => setDate(e.target.value)}
             style={{
-              width: "100%",
-              boxSizing: "border-box",
-              padding: "12px",
-              borderRadius: "10px",
-              border: "1px solid #d1d5db",
-              fontSize: "16px",
-              marginBottom: "16px",
+              ...inputStyle,
+              marginBottom: "17px",
             }}
           />
 
-          <label
-            style={{
-              display: "block",
-              fontWeight: "bold",
-              marginBottom: "7px",
-            }}
-          >
+          <label style={labelStyle}>
             Tid
           </label>
 
@@ -370,33 +447,23 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
             placeholder="Exempel: 18:00"
             inputMode="decimal"
             style={{
-              width: "100%",
-              boxSizing: "border-box",
-              padding: "12px",
-              borderRadius: "10px",
-              border: "1px solid #d1d5db",
-              fontSize: "16px",
+              ...inputStyle,
               marginBottom: "6px",
             }}
           />
 
           <p
             style={{
-              margin: "0 0 16px",
+              margin: "0 0 17px",
               color: "#6b7280",
               fontSize: "12px",
+              lineHeight: "1.4",
             }}
           >
             Du kan skriva till exempel 18, 18.00 eller 18:00.
           </p>
 
-          <label
-            style={{
-              display: "block",
-              fontWeight: "bold",
-              marginBottom: "7px",
-            }}
-          >
+          <label style={labelStyle}>
             Plats
           </label>
 
@@ -405,37 +472,35 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
             value={location}
             onChange={(e) => setLocation(e.target.value)}
             placeholder="Exempel: Hovsta IP"
-            style={{
-              width: "100%",
-              boxSizing: "border-box",
-              padding: "12px",
-              borderRadius: "10px",
-              border: "1px solid #d1d5db",
-              fontSize: "16px",
-            }}
+            style={inputStyle}
           />
         </section>
 
-        <section
-          style={{
-            background: "white",
-            borderRadius: "18px",
-            padding: "20px",
-            marginBottom: "16px",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-          }}
-        >
-          <h2 style={{ marginTop: 0 }}>
+        <section style={cardStyle}>
+          <p
+            style={{
+              margin: "0 0 6px",
+              color: "#6b7280",
+              fontSize: "12px",
+              fontWeight: "bold",
+              letterSpacing: "0.7px",
+              textTransform: "uppercase",
+            }}
+          >
+            Innehåll
+          </p>
+
+          <h2
+            style={{
+              margin: "0 0 20px",
+              color: "#123b2a",
+              fontSize: "21px",
+            }}
+          >
             🎯 Träningsfokus
           </h2>
 
-          <label
-            style={{
-              display: "block",
-              fontWeight: "bold",
-              marginBottom: "7px",
-            }}
-          >
+          <label style={labelStyle}>
             Vad fokuserar träningen på?
           </label>
 
@@ -445,23 +510,12 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
             onChange={(e) => setFocus(e.target.value)}
             placeholder="Exempel: Återerövring och kontring"
             style={{
-              width: "100%",
-              boxSizing: "border-box",
-              padding: "12px",
-              borderRadius: "10px",
-              border: "1px solid #d1d5db",
-              fontSize: "16px",
-              marginBottom: "16px",
+              ...inputStyle,
+              marginBottom: "17px",
             }}
           />
 
-          <label
-            style={{
-              display: "block",
-              fontWeight: "bold",
-              marginBottom: "7px",
-            }}
-          >
+          <label style={labelStyle}>
             Beskrivning
           </label>
 
@@ -471,34 +525,69 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
             placeholder="Beskriv syftet med träningspasset..."
             rows={4}
             style={{
-              width: "100%",
-              boxSizing: "border-box",
-              padding: "12px",
-              borderRadius: "10px",
-              border: "1px solid #d1d5db",
+              ...inputStyle,
               fontSize: "15px",
               resize: "vertical",
+              fontFamily: "Arial, sans-serif",
             }}
           />
         </section>
 
-        <section
-          style={{
-            background: "white",
-            borderRadius: "18px",
-            padding: "20px",
-            marginBottom: "16px",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-          }}
-        >
-          <h2 style={{ marginTop: 0 }}>
-            🏃 Övningar
-          </h2>
+        <section style={cardStyle}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              gap: "12px",
+              marginBottom: "4px",
+            }}
+          >
+            <div>
+              <p
+                style={{
+                  margin: "0 0 6px",
+                  color: "#6b7280",
+                  fontSize: "12px",
+                  fontWeight: "bold",
+                  letterSpacing: "0.7px",
+                  textTransform: "uppercase",
+                }}
+              >
+                Träningsplan
+              </p>
+
+              <h2
+                style={{
+                  margin: 0,
+                  color: "#123b2a",
+                  fontSize: "21px",
+                }}
+              >
+                🏃 Övningar
+              </h2>
+            </div>
+
+            <span
+              style={{
+                background: "#edf4f0",
+                color: "#123b2a",
+                padding: "6px 10px",
+                borderRadius: "20px",
+                fontSize: "12px",
+                fontWeight: "bold",
+              }}
+            >
+              {exercises.length} st
+            </span>
+          </div>
 
           <p
             style={{
-              color: "#666",
+              color: "#5f6663",
               lineHeight: "1.5",
+              margin: "12px 0 18px",
+              fontSize: "14px",
             }}
           >
             Lägg till de övningar som ska ingå i
@@ -511,8 +600,8 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
               style={{
                 padding: "16px",
                 borderRadius: "14px",
-                background: "#f7f8f8",
-                border: "1px solid #e5e7eb",
+                background: "#f7f9f8",
+                border: "1px solid #e1e7e3",
                 marginBottom: "14px",
               }}
             >
@@ -521,12 +610,42 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
-                  marginBottom: "12px",
+                  gap: "10px",
+                  marginBottom: "13px",
                 }}
               >
-                <strong>
-                  Övning {index + 1}
-                </strong>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "9px",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "29px",
+                      height: "29px",
+                      borderRadius: "9px",
+                      background: "#123b2a",
+                      color: "white",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "13px",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    {index + 1}
+                  </div>
+
+                  <strong
+                    style={{
+                      color: "#123b2a",
+                    }}
+                  >
+                    Övning {index + 1}
+                  </strong>
+                </div>
 
                 {exercises.length > 1 && (
                   <button
@@ -536,9 +655,10 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
                     style={{
                       border: "none",
                       background: "transparent",
-                      color: "#a33",
+                      color: "#9b2c2c",
                       cursor: "pointer",
-                      fontSize: "14px",
+                      fontSize: "13px",
+                      fontWeight: "bold",
                     }}
                   >
                     Ta bort
@@ -558,11 +678,7 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
                 }
                 placeholder="Namn på övningen"
                 style={{
-                  width: "100%",
-                  boxSizing: "border-box",
-                  padding: "12px",
-                  borderRadius: "10px",
-                  border: "1px solid #d1d5db",
+                  ...inputStyle,
                   fontSize: "15px",
                   marginBottom: "10px",
                 }}
@@ -580,13 +696,10 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
                 placeholder="Beskriv övningen..."
                 rows={3}
                 style={{
-                  width: "100%",
-                  boxSizing: "border-box",
-                  padding: "12px",
-                  borderRadius: "10px",
-                  border: "1px solid #d1d5db",
+                  ...inputStyle,
                   fontSize: "15px",
                   resize: "vertical",
+                  fontFamily: "Arial, sans-serif",
                 }}
               />
             </div>
@@ -597,9 +710,9 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
             style={{
               width: "100%",
               padding: "13px",
-              border: "1px dashed #123b2a",
+              border: "1px dashed #739080",
               borderRadius: "12px",
-              background: "#f2f8f4",
+              background: "#edf4f0",
               color: "#123b2a",
               fontSize: "15px",
               fontWeight: "bold",
@@ -610,16 +723,27 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
           </button>
         </section>
 
-        <section
-          style={{
-            background: "white",
-            borderRadius: "18px",
-            padding: "20px",
-            marginBottom: "16px",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-          }}
-        >
-          <h2 style={{ marginTop: 0 }}>
+        <section style={cardStyle}>
+          <p
+            style={{
+              margin: "0 0 6px",
+              color: "#6b7280",
+              fontSize: "12px",
+              fontWeight: "bold",
+              letterSpacing: "0.7px",
+              textTransform: "uppercase",
+            }}
+          >
+            Information till spelarna
+          </p>
+
+          <h2
+            style={{
+              margin: "0 0 16px",
+              color: "#123b2a",
+              fontSize: "21px",
+            }}
+          >
             📝 Övrigt
           </h2>
 
@@ -629,13 +753,10 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
             placeholder="Information som spelarna behöver känna till, till exempel samlingstid eller vad de ska ta med..."
             rows={4}
             style={{
-              width: "100%",
-              boxSizing: "border-box",
-              padding: "12px",
-              borderRadius: "10px",
-              border: "1px solid #d1d5db",
+              ...inputStyle,
               fontSize: "15px",
               resize: "vertical",
+              fontFamily: "Arial, sans-serif",
             }}
           />
         </section>
@@ -652,11 +773,23 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
             fontSize: "17px",
             fontWeight: "bold",
             cursor: "pointer",
-            marginBottom: "30px",
+            boxShadow: "0 4px 12px rgba(18,59,42,0.15)",
           }}
         >
           Spara och publicera träning
         </button>
+
+        <p
+          style={{
+            margin: "20px 0 24px",
+            textAlign: "center",
+            color: "#9aa29d",
+            fontSize: "11px",
+            letterSpacing: "0.5px",
+          }}
+        >
+          HOVSTA IF • LEDARLÄGE
+        </p>
       </main>
     </div>
   )
