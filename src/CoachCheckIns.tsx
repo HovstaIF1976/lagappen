@@ -1,42 +1,37 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { supabase } from "./supabase"
 
 type CoachCheckInsProps = {
   onBack: () => void
 }
 
-type Exercise = {
-  id: number
-  name: string
-  description: string
-}
-
 type TrainingData = {
-  id?: number
+  id: string
   date: string
   time: string
   location: string
   focus: string
-  description: string
-  exercises: Exercise[]
-  notes: string
-  createdAt: string
+  description: string | null
+  notes: string | null
 }
 
 type CheckInData = {
-  id: number
-  trainingId: number | string
+  id: string
+  training_id: string
+  player_id: string
   playerName: string
-  mood: number | null
+  mood: number
   moodReason: string
-  energy: number | null
+  energy: number
   pain: string
   other: string
   date: string
 }
 
 type CheckOutData = {
-  id: number
-  trainingId: number | string
+  id: string
+  training_id: string
+  player_id: string
   playerName: string
   feeling: number
   effort: number
@@ -45,9 +40,18 @@ type CheckOutData = {
   date: string
 }
 
+type ProfileData = {
+  id: string
+  full_name: string
+}
+
 type Tab = "checkin" | "checkout"
 
 function CoachCheckIns({ onBack }: CoachCheckInsProps) {
+  const [trainings, setTrainings] = useState<TrainingData[]>([])
+  const [checkIns, setCheckIns] = useState<CheckInData[]>([])
+  const [checkOuts, setCheckOuts] = useState<CheckOutData[]>([])
+
   const [selectedTraining, setSelectedTraining] =
     useState<TrainingData | null>(null)
 
@@ -60,63 +64,141 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
   const [selectedTab, setSelectedTab] =
     useState<Tab>("checkin")
 
-  const getTrainings = (): TrainingData[] => {
-    const saved = localStorage.getItem("hovstaTrainings")
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
 
-    if (!saved) return []
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true)
+      setError("")
 
-    try {
-      const parsed = JSON.parse(saved)
-      return Array.isArray(parsed) ? parsed : []
-    } catch {
-      return []
+      try {
+        const [
+          trainingsResult,
+          checkInsResult,
+          checkOutsResult,
+          profilesResult,
+        ] = await Promise.all([
+          supabase
+            .from("trainings")
+            .select(
+              "id, date, time, location, focus, description, notes"
+            )
+            .order("date", { ascending: false })
+            .order("time", { ascending: false }),
+
+          supabase
+            .from("check_ins")
+            .select(
+              "id, training_id, player_id, mood, mood_reason, energy, pain, other, created_at"
+            )
+            .order("created_at", { ascending: false }),
+
+          supabase
+            .from("check_outs")
+            .select(
+              "id, training_id, player_id, feeling, effort, body, comment, created_at"
+            )
+            .order("created_at", { ascending: false }),
+
+          supabase
+            .from("profiles")
+            .select("id, full_name")
+            .eq("role", "player"),
+        ])
+
+        if (trainingsResult.error) {
+          throw trainingsResult.error
+        }
+
+        if (checkInsResult.error) {
+          throw checkInsResult.error
+        }
+
+        if (checkOutsResult.error) {
+          throw checkOutsResult.error
+        }
+
+        if (profilesResult.error) {
+          throw profilesResult.error
+        }
+
+        const profiles =
+          (profilesResult.data ?? []) as ProfileData[]
+
+        const profileMap = new Map(
+          profiles.map((profile) => [
+            profile.id,
+            profile.full_name,
+          ])
+        )
+
+        const loadedTrainings: TrainingData[] =
+          (trainingsResult.data ?? []).map((training) => ({
+            id: training.id,
+            date: training.date,
+            time: training.time,
+            location: training.location,
+            focus: training.focus,
+            description: training.description,
+            notes: training.notes,
+          }))
+
+        const loadedCheckIns: CheckInData[] =
+          (checkInsResult.data ?? []).map((checkIn) => ({
+            id: checkIn.id,
+            training_id: checkIn.training_id,
+            player_id: checkIn.player_id,
+            playerName:
+              profileMap.get(checkIn.player_id) ??
+              "Okänd spelare",
+            mood: checkIn.mood,
+            moodReason: checkIn.mood_reason ?? "",
+            energy: checkIn.energy,
+            pain: checkIn.pain ?? "",
+            other: checkIn.other ?? "",
+            date: checkIn.created_at,
+          }))
+
+        const loadedCheckOuts: CheckOutData[] =
+          (checkOutsResult.data ?? []).map((checkOut) => ({
+            id: checkOut.id,
+            training_id: checkOut.training_id,
+            player_id: checkOut.player_id,
+            playerName:
+              profileMap.get(checkOut.player_id) ??
+              "Okänd spelare",
+            feeling: checkOut.feeling,
+            effort: checkOut.effort,
+            body: checkOut.body,
+            comment: checkOut.comment ?? "",
+            date: checkOut.created_at,
+          }))
+
+        setTrainings(loadedTrainings)
+        setCheckIns(loadedCheckIns)
+        setCheckOuts(loadedCheckOuts)
+      } catch (caughtError) {
+        console.error(caughtError)
+
+        setError(
+          "Kunde inte hämta spelarnas svar. Försök igen."
+        )
+      } finally {
+        setLoading(false)
+      }
     }
-  }
 
-  const getCheckIns = (): CheckInData[] => {
-    const saved = localStorage.getItem("hovstaCheckIns")
+    void loadData()
+  }, [])
 
-    if (!saved) return []
-
-    try {
-      const parsed = JSON.parse(saved)
-      return Array.isArray(parsed) ? parsed : []
-    } catch {
-      return []
-    }
-  }
-
-  const getCheckOuts = (): CheckOutData[] => {
-    const saved = localStorage.getItem("hovstaCheckOuts")
-
-    if (!saved) return []
-
-    try {
-      const parsed = JSON.parse(saved)
-      return Array.isArray(parsed) ? parsed : []
-    } catch {
-      return []
-    }
-  }
-
-  const trainings = getTrainings()
-  const checkIns = getCheckIns()
-  const checkOuts = getCheckOuts()
-
-  const getTrainingId = (
+  const getTrainingDateTime = (
     training: TrainingData
-  ): number | string => {
-    return training.id ?? training.createdAt
-  }
-
-  const getTrainingDateTime = (training: TrainingData) => {
+  ) => {
     if (!training.date) return 0
 
-    const time =
-      training.time &&
-      /^\d{1,2}:\d{2}$/.test(training.time)
-        ? training.time
-        : "23:59"
+    const rawTime = training.time || "23:59"
+    const time = rawTime.slice(0, 5)
 
     const value = new Date(
       `${training.date}T${time}:00`
@@ -149,25 +231,21 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
 
   const nextTraining = upcomingTrainings[0] ?? null
 
-  const isNextTraining = (training: TrainingData) => {
+  const isNextTraining = (
+    training: TrainingData
+  ) => {
     if (!nextTraining) return false
 
-    return (
-      String(getTrainingId(training)) ===
-      String(getTrainingId(nextTraining))
-    )
+    return training.id === nextTraining.id
   }
 
   const getCheckInsForTraining = (
     training: TrainingData
   ) => {
-    const trainingId = getTrainingId(training)
-
     return checkIns
       .filter(
         (checkIn) =>
-          String(checkIn.trainingId) ===
-          String(trainingId)
+          checkIn.training_id === training.id
       )
       .sort(
         (a, b) =>
@@ -179,13 +257,10 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
   const getCheckOutsForTraining = (
     training: TrainingData
   ) => {
-    const trainingId = getTrainingId(training)
-
     return checkOuts
       .filter(
         (checkOut) =>
-          String(checkOut.trainingId) ===
-          String(trainingId)
+          checkOut.training_id === training.id
       )
       .sort(
         (a, b) =>
@@ -207,10 +282,12 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
     )
   }
 
-  const getStatusType = (checkIn: CheckInData) => {
+  const getStatusType = (
+    checkIn: CheckInData
+  ) => {
     if (
-      (checkIn.mood !== null && checkIn.mood <= 2) ||
-      (checkIn.energy !== null && checkIn.energy <= 2) ||
+      checkIn.mood <= 2 ||
+      checkIn.energy <= 2 ||
       hasPain(checkIn)
     ) {
       return "attention"
@@ -255,37 +332,45 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
     }
   }
 
-  const getMoodEmoji = (mood: number | null) => {
+  const getMoodEmoji = (mood: number) => {
     if (mood === 1) return "😞"
     if (mood === 2) return "😕"
     if (mood === 3) return "😐"
     if (mood === 4) return "🙂"
     if (mood === 5) return "😄"
+
     return "–"
   }
 
-  const getMoodText = (mood: number | null) => {
+  const getMoodText = (mood: number) => {
     if (mood === 1) return "Inte bra"
     if (mood === 2) return "Sådär"
     if (mood === 3) return "Okej"
     if (mood === 4) return "Bra"
     if (mood === 5) return "Jättebra"
+
     return "Ej svarat"
   }
 
-  const getFeelingEmoji = (feeling: number) => {
+  const getFeelingEmoji = (
+    feeling: number
+  ) => {
     if (feeling === 1) return "😞"
     if (feeling === 2) return "😕"
     if (feeling === 3) return "😐"
     if (feeling === 4) return "🙂"
     if (feeling === 5) return "😄"
+
     return "–"
   }
 
-  const formatTrainingDate = (date: string) => {
+  const formatTrainingDate = (
+    date: string
+  ) => {
     if (!date) return ""
 
-    const dateObject = new Date(`${date}T12:00:00`)
+    const dateObject =
+      new Date(`${date}T12:00:00`)
 
     return new Intl.DateTimeFormat("sv-SE", {
       weekday: "long",
@@ -294,7 +379,9 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
     }).format(dateObject)
   }
 
-  const formatResponseDate = (date: string) => {
+  const formatResponseDate = (
+    date: string
+  ) => {
     const dateObject = new Date(date)
 
     return new Intl.DateTimeFormat("sv-SE", {
@@ -303,6 +390,10 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
       hour: "2-digit",
       minute: "2-digit",
     }).format(dateObject)
+  }
+
+  const formatTime = (time: string) => {
+    return time ? time.slice(0, 5) : ""
   }
 
   const getAverage = (
@@ -344,7 +435,8 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
   const backButtonStyle: React.CSSProperties = {
     background: "rgba(255,255,255,0.1)",
     color: "white",
-    border: "1px solid rgba(255,255,255,0.22)",
+    border:
+      "1px solid rgba(255,255,255,0.22)",
     borderRadius: "10px",
     padding: "9px 13px",
     cursor: "pointer",
@@ -434,6 +526,88 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
     </header>
   )
 
+  if (loading) {
+    return (
+      <div style={pageStyle}>
+        <Header
+          eyebrow="Hovsta IF • Ledarläge"
+          title="Spelarnas svar 💚"
+          subtitle="Hämtar lagets svar..."
+          back={onBack}
+        />
+
+        <main style={mainStyle}>
+          <section
+            style={{
+              ...cardStyle,
+              textAlign: "center",
+              padding: "35px 20px",
+            }}
+          >
+            <div
+              style={{
+                fontSize: "34px",
+                marginBottom: "10px",
+              }}
+            >
+              ⏳
+            </div>
+
+            <p
+              style={{
+                margin: 0,
+                color: "#666",
+              }}
+            >
+              Hämtar träningsdata...
+            </p>
+          </section>
+        </main>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div style={pageStyle}>
+        <Header
+          eyebrow="Hovsta IF • Ledarläge"
+          title="Spelarnas svar 💚"
+          back={onBack}
+        />
+
+        <main style={mainStyle}>
+          <section
+            style={{
+              ...cardStyle,
+              background: "#fff1f1",
+              border: "1px solid #ead0d0",
+            }}
+          >
+            <h3
+              style={{
+                margin: "0 0 8px",
+                color: "#9b2c2c",
+              }}
+            >
+              Kunde inte hämta data
+            </h3>
+
+            <p
+              style={{
+                margin: 0,
+                color: "#8b3434",
+                lineHeight: "1.5",
+              }}
+            >
+              {error}
+            </p>
+          </section>
+        </main>
+      </div>
+    )
+  }
+
   if (selectedCheckIn) {
     const status = getStatus(selectedCheckIn)
 
@@ -452,7 +626,8 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
           <section
             style={{
               ...cardStyle,
-              borderTop: `4px solid ${status.color}`,
+              borderTop:
+                `4px solid ${status.color}`,
             }}
           >
             <p
@@ -475,7 +650,8 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
                 borderRadius: "999px",
                 background: status.background,
                 color: status.color,
-                border: `1px solid ${status.border}`,
+                border:
+                  `1px solid ${status.border}`,
                 fontSize: "12px",
                 fontWeight: "bold",
               }}
@@ -487,7 +663,8 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(2, 1fr)",
+              gridTemplateColumns:
+                "repeat(2, 1fr)",
               gap: "12px",
               marginBottom: "16px",
             }}
@@ -506,7 +683,9 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
                   marginBottom: "8px",
                 }}
               >
-                {getMoodEmoji(selectedCheckIn.mood)}
+                {getMoodEmoji(
+                  selectedCheckIn.mood
+                )}
               </div>
 
               <p
@@ -520,7 +699,9 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
               </p>
 
               <strong>
-                {getMoodText(selectedCheckIn.mood)}
+                {getMoodText(
+                  selectedCheckIn.mood
+                )}
               </strong>
             </section>
 
@@ -552,7 +733,7 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
               </p>
 
               <strong>
-                {selectedCheckIn.energy ?? "–"}/5
+                {selectedCheckIn.energy}/5
               </strong>
             </section>
           </div>
@@ -560,20 +741,23 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
           <section
             style={{
               ...cardStyle,
-              background: hasPain(selectedCheckIn)
-                ? "#fff7f7"
-                : "white",
-              border: hasPain(selectedCheckIn)
-                ? "1px solid #ead0d0"
-                : "1px solid #edf0ee",
+              background:
+                hasPain(selectedCheckIn)
+                  ? "#fff7f7"
+                  : "white",
+              border:
+                hasPain(selectedCheckIn)
+                  ? "1px solid #ead0d0"
+                  : "1px solid #edf0ee",
             }}
           >
             <h3
               style={{
                 margin: "0 0 9px",
-                color: hasPain(selectedCheckIn)
-                  ? "#9b2c2c"
-                  : "#123b2a",
+                color:
+                  hasPain(selectedCheckIn)
+                    ? "#9b2c2c"
+                    : "#123b2a",
               }}
             >
               🩹 Skada / känning
@@ -582,9 +766,10 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
             <p
               style={{
                 margin: 0,
-                color: hasPain(selectedCheckIn)
-                  ? "#8b3434"
-                  : "#5f6663",
+                color:
+                  hasPain(selectedCheckIn)
+                    ? "#8b3434"
+                    : "#5f6663",
                 lineHeight: "1.6",
                 whiteSpace: "pre-wrap",
               }}
@@ -595,12 +780,14 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
             </p>
           </section>
 
-          {selectedCheckIn.moodReason?.trim() !== "" && (
+          {selectedCheckIn.moodReason.trim() !==
+            "" && (
             <section
               style={{
                 ...cardStyle,
                 background: "#fffaf0",
-                border: "1px solid #f0dfb8",
+                border:
+                  "1px solid #f0dfb8",
               }}
             >
               <h3
@@ -625,7 +812,8 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
             </section>
           )}
 
-          {selectedCheckIn.other?.trim() !== "" && (
+          {selectedCheckIn.other.trim() !==
+            "" && (
             <section style={cardStyle}>
               <h3
                 style={{
@@ -669,7 +857,8 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
+              gridTemplateColumns:
+                "repeat(3, 1fr)",
               gap: "10px",
               marginBottom: "16px",
             }}
@@ -677,7 +866,8 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
             {[
               {
                 label: "Känsla",
-                value: selectedCheckOut.feeling,
+                value:
+                  selectedCheckOut.feeling,
                 icon: getFeelingEmoji(
                   selectedCheckOut.feeling
                 ),
@@ -721,7 +911,9 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
                   {item.label}
                 </p>
 
-                <strong>{item.value}/5</strong>
+                <strong>
+                  {item.value}/5
+                </strong>
               </section>
             ))}
           </div>
@@ -729,7 +921,8 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
           <section
             style={{
               ...cardStyle,
-              borderTop: "4px solid #f39200",
+              borderTop:
+                "4px solid #f39200",
             }}
           >
             <h3
@@ -749,7 +942,7 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
                 whiteSpace: "pre-wrap",
               }}
             >
-              {selectedCheckOut.comment?.trim()
+              {selectedCheckOut.comment.trim()
                 ? selectedCheckOut.comment
                 : "Ingen kommentar lämnades."}
             </p>
@@ -766,20 +959,25 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
     const trainingCheckOuts =
       getCheckOutsForTraining(selectedTraining)
 
-    const goodCount = trainingCheckIns.filter(
-      (checkIn) =>
-        getStatusType(checkIn) === "good"
-    ).length
+    const goodCount =
+      trainingCheckIns.filter(
+        (checkIn) =>
+          getStatusType(checkIn) === "good"
+      ).length
 
-    const followupCount = trainingCheckIns.filter(
-      (checkIn) =>
-        getStatusType(checkIn) === "followup"
-    ).length
+    const followupCount =
+      trainingCheckIns.filter(
+        (checkIn) =>
+          getStatusType(checkIn) ===
+          "followup"
+      ).length
 
-    const attentionCount = trainingCheckIns.filter(
-      (checkIn) =>
-        getStatusType(checkIn) === "attention"
-    ).length
+    const attentionCount =
+      trainingCheckIns.filter(
+        (checkIn) =>
+          getStatusType(checkIn) ===
+          "attention"
+      ).length
 
     const averageFeeling = getAverage(
       trainingCheckOuts.map(
@@ -806,9 +1004,9 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
           title={selectedTraining.focus}
           subtitle={`${formatTrainingDate(
             selectedTraining.date
-          )} • ${selectedTraining.time} • ${
-            selectedTraining.location
-          }`}
+          )} • ${formatTime(
+            selectedTraining.time
+          )} • ${selectedTraining.location}`}
           back={() => {
             setSelectedTraining(null)
             setSelectedTab("checkin")
@@ -821,12 +1019,15 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
               ...cardStyle,
               padding: "7px",
               display: "grid",
-              gridTemplateColumns: "1fr 1fr",
+              gridTemplateColumns:
+                "1fr 1fr",
               gap: "7px",
             }}
           >
             <button
-              onClick={() => setSelectedTab("checkin")}
+              onClick={() =>
+                setSelectedTab("checkin")
+              }
               style={{
                 padding: "13px 8px",
                 border: "none",
@@ -843,11 +1044,14 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
                 cursor: "pointer",
               }}
             >
-              💚 Check-in ({trainingCheckIns.length})
+              💚 Check-in (
+              {trainingCheckIns.length})
             </button>
 
             <button
-              onClick={() => setSelectedTab("checkout")}
+              onClick={() =>
+                setSelectedTab("checkout")
+              }
               style={{
                 padding: "13px 8px",
                 border: "none",
@@ -864,7 +1068,8 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
                 cursor: "pointer",
               }}
             >
-              👋 Check-out ({trainingCheckOuts.length})
+              👋 Check-out (
+              {trainingCheckOuts.length})
             </button>
           </section>
 
@@ -882,7 +1087,8 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
                     fontSize: "12px",
                     fontWeight: "bold",
                     letterSpacing: "0.8px",
-                    textTransform: "uppercase",
+                    textTransform:
+                      "uppercase",
                   }}
                 >
                   Inför träningen
@@ -933,7 +1139,8 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
                       borderRadius: "16px",
                       padding: "16px 7px",
                       textAlign: "center",
-                      background: item.background,
+                      background:
+                        item.background,
                       color: item.color,
                       border:
                         "1px solid rgba(0,0,0,0.04)",
@@ -961,7 +1168,8 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
                 ))}
               </div>
 
-              {trainingCheckIns.length === 0 ? (
+              {trainingCheckIns.length ===
+              0 ? (
                 <section
                   style={{
                     ...cardStyle,
@@ -994,103 +1202,136 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
                       lineHeight: "1.5",
                     }}
                   >
-                    Spelarnas svar inför träningen
-                    kommer att visas här.
+                    Spelarnas svar inför
+                    träningen kommer att visas
+                    här.
                   </p>
                 </section>
               ) : (
-                trainingCheckIns.map((checkIn) => {
-                  const status = getStatus(checkIn)
+                trainingCheckIns.map(
+                  (checkIn) => {
+                    const status =
+                      getStatus(checkIn)
 
-                  return (
-                    <button
-                      key={checkIn.id}
-                      onClick={() =>
-                        setSelectedCheckIn(checkIn)
-                      }
-                      style={{
-                        width: "100%",
-                        display: "block",
-                        textAlign: "left",
-                        background: "white",
-                        border: `1px solid ${status.border}`,
-                        borderRadius: "18px",
-                        padding: "17px",
-                        marginBottom: "11px",
-                        boxShadow:
-                          "0 3px 12px rgba(18,59,42,0.06)",
-                        cursor: "pointer",
-                        color: "#17202a",
-                      }}
-                    >
-                      <div
+                    return (
+                      <button
+                        key={checkIn.id}
+                        onClick={() =>
+                          setSelectedCheckIn(
+                            checkIn
+                          )
+                        }
                         style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "12px",
+                          width: "100%",
+                          display: "block",
+                          textAlign: "left",
+                          background: "white",
+                          border:
+                            `1px solid ${status.border}`,
+                          borderRadius: "18px",
+                          padding: "17px",
+                          marginBottom: "11px",
+                          boxShadow:
+                            "0 3px 12px rgba(18,59,42,0.06)",
+                          cursor: "pointer",
+                          color: "#17202a",
                         }}
                       >
                         <div
                           style={{
-                            width: "44px",
-                            height: "44px",
-                            minWidth: "44px",
-                            borderRadius: "14px",
-                            background: "#f4f6f5",
                             display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontSize: "25px",
+                            alignItems:
+                              "center",
+                            gap: "12px",
                           }}
                         >
-                          {getMoodEmoji(checkIn.mood)}
-                        </div>
-
-                        <div style={{ flex: 1 }}>
-                          <h3
+                          <div
                             style={{
-                              margin: "0 0 5px",
-                              color: "#123b2a",
-                              fontSize: "16px",
+                              width: "44px",
+                              height: "44px",
+                              minWidth: "44px",
+                              borderRadius:
+                                "14px",
+                              background:
+                                "#f4f6f5",
+                              display: "flex",
+                              alignItems:
+                                "center",
+                              justifyContent:
+                                "center",
+                              fontSize: "25px",
                             }}
                           >
-                            {checkIn.playerName}
-                          </h3>
+                            {getMoodEmoji(
+                              checkIn.mood
+                            )}
+                          </div>
 
-                          <p
+                          <div
                             style={{
-                              margin: 0,
-                              color: "#6b7280",
-                              fontSize: "12px",
+                              flex: 1,
                             }}
                           >
-                            Mående{" "}
-                            {checkIn.mood ?? "–"}/5 •
-                            Energi{" "}
-                            {checkIn.energy ?? "–"}/5
-                            {hasPain(checkIn)
-                              ? " • 🩹 Känning"
-                              : ""}
-                          </p>
-                        </div>
+                            <h3
+                              style={{
+                                margin:
+                                  "0 0 5px",
+                                color:
+                                  "#123b2a",
+                                fontSize:
+                                  "16px",
+                              }}
+                            >
+                              {
+                                checkIn.playerName
+                              }
+                            </h3>
 
-                        <span
-                          style={{
-                            padding: "6px 8px",
-                            borderRadius: "999px",
-                            background:
-                              status.background,
-                            color: status.color,
-                            fontSize: "9px",
-                            fontWeight: "bold",
-                          }}
-                        >
-                          {status.text}
-                        </span>
-                      </div>
-                    </button>
-                  )
-                })
+                            <p
+                              style={{
+                                margin: 0,
+                                color:
+                                  "#6b7280",
+                                fontSize:
+                                  "12px",
+                              }}
+                            >
+                              Mående{" "}
+                              {checkIn.mood}
+                              /5 • Energi{" "}
+                              {checkIn.energy}
+                              /5
+                              {hasPain(
+                                checkIn
+                              )
+                                ? " • 🩹 Känning"
+                                : ""}
+                            </p>
+                          </div>
+
+                          <span
+                            style={{
+                              padding:
+                                "6px 8px",
+                              borderRadius:
+                                "999px",
+                              background:
+                                status.background,
+                              color:
+                                status.color,
+                              fontSize:
+                                "9px",
+                              fontWeight:
+                                "bold",
+                            }}
+                          >
+                            {status.text}
+                          </span>
+                        </div>
+                      </button>
+                    )
+                  }
+                )
               )}
             </>
           ) : (
@@ -1107,7 +1348,8 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
                     fontSize: "12px",
                     fontWeight: "bold",
                     letterSpacing: "0.8px",
-                    textTransform: "uppercase",
+                    textTransform:
+                      "uppercase",
                   }}
                 >
                   Efter träningen
@@ -1123,11 +1365,13 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
                 </h2>
               </div>
 
-              {trainingCheckOuts.length > 0 && (
+              {trainingCheckOuts.length >
+                0 && (
                 <section
                   style={{
                     ...cardStyle,
-                    borderTop: "4px solid #f39200",
+                    borderTop:
+                      "4px solid #f39200",
                   }}
                 >
                   <p
@@ -1136,8 +1380,10 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
                       color: "#6b7280",
                       fontSize: "11px",
                       fontWeight: "bold",
-                      letterSpacing: "0.8px",
-                      textTransform: "uppercase",
+                      letterSpacing:
+                        "0.8px",
+                      textTransform:
+                        "uppercase",
                     }}
                   >
                     Lagets snitt
@@ -1155,24 +1401,33 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
                     {[
                       {
                         label: "Känsla",
-                        value: averageFeeling,
+                        value:
+                          averageFeeling,
                       },
                       {
-                        label: "Ansträngning",
-                        value: averageEffort,
+                        label:
+                          "Ansträngning",
+                        value:
+                          averageEffort,
                       },
                       {
                         label: "Kropp",
                         value: averageBody,
                       },
                     ].map((item) => (
-                      <div key={item.label}>
+                      <div
+                        key={item.label}
+                      >
                         <strong
                           style={{
-                            display: "block",
-                            color: "#123b2a",
-                            fontSize: "22px",
-                            marginBottom: "4px",
+                            display:
+                              "block",
+                            color:
+                              "#123b2a",
+                            fontSize:
+                              "22px",
+                            marginBottom:
+                              "4px",
                           }}
                         >
                           {item.value}
@@ -1180,8 +1435,10 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
 
                         <span
                           style={{
-                            color: "#6b7280",
-                            fontSize: "10px",
+                            color:
+                              "#6b7280",
+                            fontSize:
+                              "10px",
                           }}
                         >
                           {item.label} /5
@@ -1192,7 +1449,8 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
                 </section>
               )}
 
-              {trainingCheckOuts.length === 0 ? (
+              {trainingCheckOuts.length ===
+              0 ? (
                 <section
                   style={{
                     ...cardStyle,
@@ -1225,94 +1483,126 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
                       lineHeight: "1.5",
                     }}
                   >
-                    Spelarnas svar efter träningen
-                    kommer att visas här.
+                    Spelarnas svar efter
+                    träningen kommer att visas
+                    här.
                   </p>
                 </section>
               ) : (
-                trainingCheckOuts.map((checkOut) => (
-                  <button
-                    key={checkOut.id}
-                    onClick={() =>
-                      setSelectedCheckOut(checkOut)
-                    }
-                    style={{
-                      width: "100%",
-                      display: "block",
-                      textAlign: "left",
-                      background: "white",
-                      border: "1px solid #edf0ee",
-                      borderRadius: "18px",
-                      padding: "17px",
-                      marginBottom: "11px",
-                      boxShadow:
-                        "0 3px 12px rgba(18,59,42,0.06)",
-                      cursor: "pointer",
-                      color: "#17202a",
-                    }}
-                  >
-                    <div
+                trainingCheckOuts.map(
+                  (checkOut) => (
+                    <button
+                      key={checkOut.id}
+                      onClick={() =>
+                        setSelectedCheckOut(
+                          checkOut
+                        )
+                      }
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "12px",
+                        width: "100%",
+                        display: "block",
+                        textAlign: "left",
+                        background: "white",
+                        border:
+                          "1px solid #edf0ee",
+                        borderRadius:
+                          "18px",
+                        padding: "17px",
+                        marginBottom:
+                          "11px",
+                        boxShadow:
+                          "0 3px 12px rgba(18,59,42,0.06)",
+                        cursor: "pointer",
+                        color: "#17202a",
                       }}
                     >
                       <div
                         style={{
-                          width: "44px",
-                          height: "44px",
-                          minWidth: "44px",
-                          borderRadius: "14px",
-                          background: "#f4f6f5",
                           display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: "25px",
+                          alignItems:
+                            "center",
+                          gap: "12px",
                         }}
                       >
-                        {getFeelingEmoji(
-                          checkOut.feeling
-                        )}
-                      </div>
-
-                      <div style={{ flex: 1 }}>
-                        <h3
+                        <div
                           style={{
-                            margin: "0 0 5px",
-                            color: "#123b2a",
-                            fontSize: "16px",
+                            width: "44px",
+                            height: "44px",
+                            minWidth: "44px",
+                            borderRadius:
+                              "14px",
+                            background:
+                              "#f4f6f5",
+                            display: "flex",
+                            alignItems:
+                              "center",
+                            justifyContent:
+                              "center",
+                            fontSize: "25px",
                           }}
                         >
-                          {checkOut.playerName}
-                        </h3>
+                          {getFeelingEmoji(
+                            checkOut.feeling
+                          )}
+                        </div>
 
-                        <p
+                        <div
                           style={{
-                            margin: 0,
-                            color: "#6b7280",
-                            fontSize: "12px",
+                            flex: 1,
                           }}
                         >
-                          Känsla {checkOut.feeling}/5 •
-                          Ansträngning{" "}
-                          {checkOut.effort}/5 • Kropp{" "}
-                          {checkOut.body}/5
-                        </p>
-                      </div>
+                          <h3
+                            style={{
+                              margin:
+                                "0 0 5px",
+                              color:
+                                "#123b2a",
+                              fontSize:
+                                "16px",
+                            }}
+                          >
+                            {
+                              checkOut.playerName
+                            }
+                          </h3>
 
-                      <span
-                        style={{
-                          color: "#123b2a",
-                          fontWeight: "bold",
-                          fontSize: "18px",
-                        }}
-                      >
-                        ›
-                      </span>
-                    </div>
-                  </button>
-                ))
+                          <p
+                            style={{
+                              margin: 0,
+                              color:
+                                "#6b7280",
+                              fontSize:
+                                "12px",
+                            }}
+                          >
+                            Känsla{" "}
+                            {
+                              checkOut.feeling
+                            }
+                            /5 •
+                            Ansträngning{" "}
+                            {checkOut.effort}
+                            /5 • Kropp{" "}
+                            {checkOut.body}/5
+                          </p>
+                        </div>
+
+                        <span
+                          style={{
+                            color:
+                              "#123b2a",
+                            fontWeight:
+                              "bold",
+                            fontSize:
+                              "18px",
+                          }}
+                        >
+                          ›
+                        </span>
+                      </div>
+                    </button>
+                  )
+                )
               )}
             </>
           )}
@@ -1331,26 +1621,32 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
     const trainingCheckOuts =
       getCheckOutsForTraining(training)
 
-    const attentionCount = trainingCheckIns.filter(
-      (checkIn) =>
-        getStatusType(checkIn) === "attention"
-    ).length
+    const attentionCount =
+      trainingCheckIns.filter(
+        (checkIn) =>
+          getStatusType(checkIn) ===
+          "attention"
+      ).length
 
-    const followupCount = trainingCheckIns.filter(
-      (checkIn) =>
-        getStatusType(checkIn) === "followup"
-    ).length
+    const followupCount =
+      trainingCheckIns.filter(
+        (checkIn) =>
+          getStatusType(checkIn) ===
+          "followup"
+      ).length
 
-    const goodCount = trainingCheckIns.filter(
-      (checkIn) =>
-        getStatusType(checkIn) === "good"
-    ).length
+    const goodCount =
+      trainingCheckIns.filter(
+        (checkIn) =>
+          getStatusType(checkIn) === "good"
+      ).length
 
-    const next = isNextTraining(training)
+    const next =
+      isNextTraining(training)
 
     return (
       <button
-        key={String(getTrainingId(training))}
+        key={training.id}
         onClick={() => {
           setSelectedTraining(training)
           setSelectedTab("checkin")
@@ -1366,13 +1662,15 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
           borderRadius: "18px",
           padding: "18px",
           marginBottom: "12px",
-          boxShadow:
-            next
-              ? "0 5px 18px rgba(18,59,42,0.12)"
-              : "0 3px 12px rgba(18,59,42,0.06)",
+          boxShadow: next
+            ? "0 5px 18px rgba(18,59,42,0.12)"
+            : "0 3px 12px rgba(18,59,42,0.06)",
           cursor: "pointer",
           color: "#17202a",
-          opacity: type === "previous" ? 0.92 : 1,
+          opacity:
+            type === "previous"
+              ? 0.92
+              : 1,
           position: "relative",
           overflow: "hidden",
         }}
@@ -1393,7 +1691,8 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
         <div
           style={{
             display: "flex",
-            justifyContent: "space-between",
+            justifyContent:
+              "space-between",
             alignItems: "flex-start",
             gap: "10px",
             marginTop: next ? "4px" : 0,
@@ -1417,7 +1716,8 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
                     color: "white",
                     fontSize: "9px",
                     fontWeight: "bold",
-                    letterSpacing: "0.4px",
+                    letterSpacing:
+                      "0.4px",
                   }}
                 >
                   NÄSTA TRÄNING
@@ -1445,11 +1745,14 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
                 margin: "0 0 5px",
                 color: "#6b7280",
                 fontSize: "12px",
-                textTransform: "capitalize",
+                textTransform:
+                  "capitalize",
               }}
             >
-              {formatTrainingDate(training.date)} •{" "}
-              {training.time}
+              {formatTrainingDate(
+                training.date
+              )}{" "}
+              • {formatTime(training.time)}
             </p>
 
             <h2
@@ -1488,7 +1791,8 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
           style={{
             marginTop: "15px",
             paddingTop: "13px",
-            borderTop: "1px solid #edf0ee",
+            borderTop:
+              "1px solid #edf0ee",
           }}
         >
           <div
@@ -1508,7 +1812,8 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
                 fontWeight: "bold",
               }}
             >
-              💚 {trainingCheckIns.length} check-in
+              💚 {trainingCheckIns.length}{" "}
+              check-in
             </span>
 
             <span
@@ -1521,7 +1826,8 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
                 fontWeight: "bold",
               }}
             >
-              👋 {trainingCheckOuts.length} check-out
+              👋 {trainingCheckOuts.length}{" "}
+              check-out
             </span>
           </div>
 
@@ -1561,7 +1867,8 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
                   fontWeight: "bold",
                 }}
               >
-                ! {attentionCount} uppmärksamma
+                ! {attentionCount}{" "}
+                uppmärksamma
               </span>
             </div>
           )}
@@ -1580,120 +1887,160 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
       />
 
       <main style={mainStyle}>
-        {nextTraining && (() => {
-          const nextCheckIns =
-            getCheckInsForTraining(nextTraining)
+        {nextTraining &&
+          (() => {
+            const nextCheckIns =
+              getCheckInsForTraining(
+                nextTraining
+              )
 
-          const attentionCount =
-            nextCheckIns.filter(
-              (checkIn) =>
-                getStatusType(checkIn) === "attention"
-            ).length
+            const attentionCount =
+              nextCheckIns.filter(
+                (checkIn) =>
+                  getStatusType(
+                    checkIn
+                  ) === "attention"
+              ).length
 
-          const followupCount =
-            nextCheckIns.filter(
-              (checkIn) =>
-                getStatusType(checkIn) === "followup"
-            ).length
+            const followupCount =
+              nextCheckIns.filter(
+                (checkIn) =>
+                  getStatusType(
+                    checkIn
+                  ) === "followup"
+              ).length
 
-          return (
-            <section
-              style={{
-                ...cardStyle,
-                borderTop: "4px solid #f39200",
-                marginBottom: "25px",
-              }}
-            >
-              <p
+            return (
+              <section
                 style={{
-                  margin: "0 0 6px",
-                  color: "#123b2a",
-                  fontSize: "11px",
-                  fontWeight: "bold",
-                  letterSpacing: "0.8px",
-                  textTransform: "uppercase",
+                  ...cardStyle,
+                  borderTop:
+                    "4px solid #f39200",
+                  marginBottom: "25px",
                 }}
               >
-                Snabböverblick
-              </p>
-
-              <h2
-                style={{
-                  margin: "0 0 5px",
-                  color: "#123b2a",
-                  fontSize: "20px",
-                }}
-              >
-                Nästa träning
-              </h2>
-
-              <p
-                style={{
-                  margin: "0 0 15px",
-                  color: "#5f6663",
-                  fontSize: "13px",
-                  textTransform: "capitalize",
-                }}
-              >
-                {formatTrainingDate(nextTraining.date)} •{" "}
-                {nextTraining.time} •{" "}
-                {nextTraining.location}
-              </p>
-
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: "7px",
-                }}
-              >
-                <span
+                <p
                   style={{
-                    background: "#edf4f0",
+                    margin: "0 0 6px",
                     color: "#123b2a",
-                    padding: "7px 10px",
-                    borderRadius: "999px",
                     fontSize: "11px",
                     fontWeight: "bold",
+                    letterSpacing:
+                      "0.8px",
+                    textTransform:
+                      "uppercase",
                   }}
                 >
-                  {nextCheckIns.length} check-ins
-                </span>
+                  Snabböverblick
+                </p>
 
-                {attentionCount > 0 && (
+                <h2
+                  style={{
+                    margin: "0 0 5px",
+                    color: "#123b2a",
+                    fontSize: "20px",
+                  }}
+                >
+                  Nästa träning
+                </h2>
+
+                <p
+                  style={{
+                    margin:
+                      "0 0 15px",
+                    color: "#5f6663",
+                    fontSize: "13px",
+                    textTransform:
+                      "capitalize",
+                  }}
+                >
+                  {formatTrainingDate(
+                    nextTraining.date
+                  )}{" "}
+                  •{" "}
+                  {formatTime(
+                    nextTraining.time
+                  )}{" "}
+                  •{" "}
+                  {
+                    nextTraining.location
+                  }
+                </p>
+
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "7px",
+                  }}
+                >
                   <span
                     style={{
-                      background: "#fff1f1",
-                      color: "#9b2c2c",
-                      padding: "7px 10px",
-                      borderRadius: "999px",
+                      background:
+                        "#edf4f0",
+                      color: "#123b2a",
+                      padding:
+                        "7px 10px",
+                      borderRadius:
+                        "999px",
                       fontSize: "11px",
-                      fontWeight: "bold",
+                      fontWeight:
+                        "bold",
                     }}
                   >
-                    {attentionCount} behöver
-                    uppmärksamhet
+                    {nextCheckIns.length}{" "}
+                    check-ins
                   </span>
-                )}
 
-                {followupCount > 0 && (
-                  <span
-                    style={{
-                      background: "#fff8e7",
-                      color: "#806522",
-                      padding: "7px 10px",
-                      borderRadius: "999px",
-                      fontSize: "11px",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    {followupCount} att följa upp
-                  </span>
-                )}
-              </div>
-            </section>
-          )
-        })()}
+                  {attentionCount >
+                    0 && (
+                    <span
+                      style={{
+                        background:
+                          "#fff1f1",
+                        color:
+                          "#9b2c2c",
+                        padding:
+                          "7px 10px",
+                        borderRadius:
+                          "999px",
+                        fontSize:
+                          "11px",
+                        fontWeight:
+                          "bold",
+                      }}
+                    >
+                      {attentionCount}{" "}
+                      behöver uppmärksamhet
+                    </span>
+                  )}
+
+                  {followupCount >
+                    0 && (
+                    <span
+                      style={{
+                        background:
+                          "#fff8e7",
+                        color:
+                          "#806522",
+                        padding:
+                          "7px 10px",
+                        borderRadius:
+                          "999px",
+                        fontSize:
+                          "11px",
+                        fontWeight:
+                          "bold",
+                      }}
+                    >
+                      {followupCount} att
+                      följa upp
+                    </span>
+                  )}
+                </div>
+              </section>
+            )
+          })()}
 
         <section
           style={{
@@ -1728,7 +2075,8 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
             </h2>
           </div>
 
-          {upcomingTrainings.length === 0 ? (
+          {upcomingTrainings.length ===
+          0 ? (
             <section
               style={{
                 ...cardStyle,
@@ -1745,11 +2093,12 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
               </p>
             </section>
           ) : (
-            upcomingTrainings.map((training) =>
-              renderTrainingCard(
-                training,
-                "upcoming"
-              )
+            upcomingTrainings.map(
+              (training) =>
+                renderTrainingCard(
+                  training,
+                  "upcoming"
+                )
             )
           )}
         </section>
@@ -1794,11 +2143,13 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
                 lineHeight: "1.5",
               }}
             >
-              Senaste genomförda träningen visas först.
+              Senaste genomförda träningen
+              visas först.
             </p>
           </div>
 
-          {previousTrainings.length === 0 ? (
+          {previousTrainings.length ===
+          0 ? (
             <section
               style={{
                 ...cardStyle,
@@ -1811,15 +2162,17 @@ function CoachCheckIns({ onBack }: CoachCheckInsProps) {
                   color: "#666",
                 }}
               >
-                Det finns inga tidigare träningar ännu.
+                Det finns inga tidigare
+                träningar ännu.
               </p>
             </section>
           ) : (
-            previousTrainings.map((training) =>
-              renderTrainingCard(
-                training,
-                "previous"
-              )
+            previousTrainings.map(
+              (training) =>
+                renderTrainingCard(
+                  training,
+                  "previous"
+                )
             )
           )}
         </section>

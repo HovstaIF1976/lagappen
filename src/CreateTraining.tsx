@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { supabase } from "./supabase"
 
 type CreateTrainingProps = {
   onBack: () => void
@@ -10,37 +11,42 @@ type Exercise = {
   description: string
 }
 
-type TrainingData = {
-  id: number
-  date: string
-  time: string
-  location: string
-  focus: string
-  description: string
-  exercises: Exercise[]
-  notes: string
-  createdAt: string
-}
-
-function CreateTraining({ onBack }: CreateTrainingProps) {
+function CreateTraining({
+  onBack,
+}: CreateTrainingProps) {
   const [date, setDate] = useState("")
   const [time, setTime] = useState("")
-  const [location, setLocation] = useState("Hovsta IP")
+  const [location, setLocation] =
+    useState("Hovsta IP")
   const [focus, setFocus] = useState("")
-  const [description, setDescription] = useState("")
+  const [description, setDescription] =
+    useState("")
   const [notes, setNotes] = useState("")
-  const [saved, setSaved] = useState(false)
 
-  const [exercises, setExercises] = useState<Exercise[]>([
-    {
-      id: 1,
-      name: "",
-      description: "",
-    },
-  ])
+  const [saved, setSaved] =
+    useState(false)
 
-  const normalizeTime = (value: string): string | null => {
-    const cleanedValue = value.trim().replace(".", ":")
+  const [saving, setSaving] =
+    useState(false)
+
+  const [errorMessage, setErrorMessage] =
+    useState("")
+
+  const [exercises, setExercises] =
+    useState<Exercise[]>([
+      {
+        id: 1,
+        name: "",
+        description: "",
+      },
+    ])
+
+  const normalizeTime = (
+    value: string
+  ): string | null => {
+    const cleanedValue = value
+      .trim()
+      .replace(".", ":")
 
     let hours: number
     let minutes: number
@@ -48,8 +54,13 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
     if (/^\d{1,2}$/.test(cleanedValue)) {
       hours = Number(cleanedValue)
       minutes = 0
-    } else if (/^\d{1,2}:\d{1,2}$/.test(cleanedValue)) {
-      const parts = cleanedValue.split(":")
+    } else if (
+      /^\d{1,2}:\d{1,2}$/.test(
+        cleanedValue
+      )
+    ) {
+      const parts =
+        cleanedValue.split(":")
 
       hours = Number(parts[0])
       minutes = Number(parts[1])
@@ -66,25 +77,34 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
       return null
     }
 
-    const formattedHours = String(hours).padStart(2, "0")
-    const formattedMinutes = String(minutes).padStart(2, "0")
+    const formattedHours =
+      String(hours).padStart(2, "0")
+
+    const formattedMinutes =
+      String(minutes).padStart(2, "0")
 
     return `${formattedHours}:${formattedMinutes}`
   }
 
   const addExercise = () => {
-    const newExercise: Exercise = {
-      id: Date.now(),
-      name: "",
-      description: "",
-    }
-
-    setExercises([...exercises, newExercise])
+    setExercises((current) => [
+      ...current,
+      {
+        id: Date.now(),
+        name: "",
+        description: "",
+      },
+    ])
   }
 
-  const removeExercise = (id: number) => {
-    setExercises(
-      exercises.filter((exercise) => exercise.id !== id)
+  const removeExercise = (
+    id: number
+  ) => {
+    setExercises((current) =>
+      current.filter(
+        (exercise) =>
+          exercise.id !== id
+      )
     )
   }
 
@@ -93,22 +113,87 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
     field: "name" | "description",
     value: string
   ) => {
-    setExercises(
-      exercises.map((exercise) =>
+    setExercises((current) =>
+      current.map((exercise) =>
         exercise.id === id
-          ? { ...exercise, [field]: value }
+          ? {
+              ...exercise,
+              [field]: value,
+            }
           : exercise
       )
     )
   }
 
-  const saveTraining = () => {
-    if (!date || !time || !focus) {
-      alert("Fyll i datum, tid och träningsfokus.")
+  const buildDescription = () => {
+    const completedExercises =
+      exercises.filter(
+        (exercise) =>
+          exercise.name.trim() !== "" ||
+          exercise.description.trim() !== ""
+      )
+
+    const sections: string[] = []
+
+    if (description.trim()) {
+      sections.push(
+        description.trim()
+      )
+    }
+
+    if (
+      completedExercises.length > 0
+    ) {
+      const exerciseText =
+        completedExercises
+          .map(
+            (exercise, index) => {
+              const name =
+                exercise.name.trim() ||
+                `Övning ${index + 1}`
+
+              const exerciseDescription =
+                exercise.description.trim()
+
+              if (
+                exerciseDescription
+              ) {
+                return `${index + 1}. ${name}\n${exerciseDescription}`
+              }
+
+              return `${index + 1}. ${name}`
+            }
+          )
+          .join("\n\n")
+
+      sections.push(
+        `ÖVNINGAR\n${exerciseText}`
+      )
+    }
+
+    return sections.join("\n\n")
+  }
+
+  const saveTraining = async () => {
+    if (saving) {
       return
     }
 
-    const normalizedTime = normalizeTime(time)
+    setErrorMessage("")
+
+    if (
+      !date ||
+      !time.trim() ||
+      !focus.trim()
+    ) {
+      alert(
+        "Fyll i datum, tid och träningsfokus."
+      )
+      return
+    }
+
+    const normalizedTime =
+      normalizeTime(time)
 
     if (!normalizedTime) {
       alert(
@@ -117,61 +202,98 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
       return
     }
 
-    const completedExercises = exercises.filter(
-      (exercise) =>
-        exercise.name.trim() !== "" ||
-        exercise.description.trim() !== ""
-    )
+    setSaving(true)
 
-    const newTraining: TrainingData = {
-      id: Date.now(),
-      date,
-      time: normalizedTime,
-      location,
-      focus,
-      description,
-      exercises: completedExercises,
-      notes,
-      createdAt: new Date().toISOString(),
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      console.error(userError)
+
+      setErrorMessage(
+        "Din inloggning kunde inte verifieras. Logga in igen."
+      )
+      setSaving(false)
+      return
     }
 
-    const savedTrainings = localStorage.getItem(
-      "hovstaTrainings"
-    )
+    const {
+      data: profile,
+      error: profileError,
+    } = await supabase
+      .from("profiles")
+      .select("role, team_id")
+      .eq("id", user.id)
+      .single()
 
-    let trainings: TrainingData[] = []
+    if (
+      profileError ||
+      !profile
+    ) {
+      console.error(profileError)
 
-    if (savedTrainings) {
-      try {
-        const parsedTrainings = JSON.parse(savedTrainings)
-
-        if (Array.isArray(parsedTrainings)) {
-          trainings = parsedTrainings
-        }
-      } catch {
-        trainings = []
-      }
+      setErrorMessage(
+        "Kunde inte hämta din ledarprofil."
+      )
+      setSaving(false)
+      return
     }
 
-    trainings.push(newTraining)
+    if (
+      profile.role !== "coach" &&
+      profile.role !== "admin"
+    ) {
+      setErrorMessage(
+        "Du har inte behörighet att skapa träningar."
+      )
+      setSaving(false)
+      return
+    }
 
-    trainings.sort((a, b) => {
-      const firstDate = new Date(
-        `${a.date}T${a.time}`
-      ).getTime()
+    if (!profile.team_id) {
+      setErrorMessage(
+        "Din ledarprofil är inte kopplad till något lag ännu."
+      )
+      setSaving(false)
+      return
+    }
 
-      const secondDate = new Date(
-        `${b.date}T${b.time}`
-      ).getTime()
+    const finalDescription =
+      buildDescription()
 
-      return firstDate - secondDate
-    })
+    const { error } = await supabase
+      .from("trainings")
+      .insert({
+        date,
+        time: normalizedTime,
+        location:
+          location.trim() ||
+          "Hovsta IP",
+        focus: focus.trim(),
+        description:
+          finalDescription || null,
+        notes:
+          notes.trim() || null,
+        created_by: user.id,
+        team_id: profile.team_id,
+      })
 
-    localStorage.setItem(
-      "hovstaTrainings",
-      JSON.stringify(trainings)
-    )
+    if (error) {
+      console.error(
+        "Kunde inte skapa träning:",
+        error
+      )
 
+      setErrorMessage(
+        "Träningen kunde inte sparas. Försök igen."
+      )
+      setSaving(false)
+      return
+    }
+
+    setSaving(false)
     setSaved(true)
 
     setTimeout(() => {
@@ -184,7 +306,8 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
     borderRadius: "18px",
     padding: "20px",
     marginBottom: "16px",
-    boxShadow: "0 3px 14px rgba(18,59,42,0.07)",
+    boxShadow:
+      "0 3px 14px rgba(18,59,42,0.07)",
     border: "1px solid #edf0ee",
   }
 
@@ -214,7 +337,8 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
         style={{
           minHeight: "100vh",
           background: "#f4f6f5",
-          fontFamily: "Arial, sans-serif",
+          fontFamily:
+            "Arial, sans-serif",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -230,8 +354,10 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
             borderRadius: "24px",
             overflow: "hidden",
             textAlign: "center",
-            boxShadow: "0 8px 28px rgba(18,59,42,0.12)",
-            border: "1px solid #edf0ee",
+            boxShadow:
+              "0 8px 28px rgba(18,59,42,0.12)",
+            border:
+              "1px solid #edf0ee",
           }}
         >
           <div
@@ -250,12 +376,14 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
               style={{
                 width: "70px",
                 height: "70px",
-                margin: "0 auto 20px",
+                margin:
+                  "0 auto 20px",
                 borderRadius: "50%",
                 background: "#e7f1eb",
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "center",
+                justifyContent:
+                  "center",
                 color: "#123b2a",
                 fontSize: "34px",
                 fontWeight: "bold",
@@ -293,8 +421,8 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
                 lineHeight: "1.5",
               }}
             >
-              Träningspasset har lagts till i lagets
-              träningsplanering.
+              Träningspasset har
+              publicerats till laget.
             </p>
           </div>
         </div>
@@ -307,7 +435,8 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
       style={{
         minHeight: "100vh",
         background: "#f4f6f5",
-        fontFamily: "Arial, sans-serif",
+        fontFamily:
+          "Arial, sans-serif",
         color: "#17202a",
       }}
     >
@@ -315,9 +444,11 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
         style={{
           background: "#123b2a",
           color: "white",
-          borderRadius: "0 0 28px 28px",
+          borderRadius:
+            "0 0 28px 28px",
           overflow: "hidden",
-          boxShadow: "0 5px 18px rgba(18,59,42,0.18)",
+          boxShadow:
+            "0 5px 18px rgba(18,59,42,0.18)",
         }}
       >
         <div
@@ -331,15 +462,18 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
           style={{
             maxWidth: "600px",
             margin: "0 auto",
-            padding: "20px 20px 27px",
+            padding:
+              "20px 20px 27px",
           }}
         >
           <button
             onClick={onBack}
             style={{
-              background: "rgba(255,255,255,0.1)",
+              background:
+                "rgba(255,255,255,0.1)",
               color: "white",
-              border: "1px solid rgba(255,255,255,0.22)",
+              border:
+                "1px solid rgba(255,255,255,0.22)",
               borderRadius: "10px",
               padding: "9px 13px",
               cursor: "pointer",
@@ -367,7 +501,6 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
             style={{
               margin: "8px 0 6px",
               fontSize: "29px",
-              letterSpacing: "-0.5px",
             }}
           >
             Skapa träning ⚽
@@ -378,10 +511,10 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
               margin: 0,
               color: "#dbe6df",
               fontSize: "15px",
-              lineHeight: "1.5",
             }}
           >
-            Planera och publicera ett nytt träningspass.
+            Planera och publicera
+            ett nytt träningspass.
           </p>
         </div>
       </header>
@@ -396,7 +529,8 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
         <section
           style={{
             ...cardStyle,
-            borderTop: "4px solid #f39200",
+            borderTop:
+              "4px solid #f39200",
           }}
         >
           <p
@@ -405,8 +539,8 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
               color: "#6b7280",
               fontSize: "12px",
               fontWeight: "bold",
-              letterSpacing: "0.7px",
-              textTransform: "uppercase",
+              textTransform:
+                "uppercase",
             }}
           >
             Grundinformation
@@ -416,7 +550,6 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
             style={{
               margin: "0 0 20px",
               color: "#123b2a",
-              fontSize: "21px",
             }}
           >
             📅 När är träningen?
@@ -429,7 +562,11 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
           <input
             type="date"
             value={date}
-            onChange={(e) => setDate(e.target.value)}
+            onChange={(event) =>
+              setDate(
+                event.target.value
+              )
+            }
             style={{
               ...inputStyle,
               marginBottom: "17px",
@@ -443,7 +580,11 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
           <input
             type="text"
             value={time}
-            onChange={(e) => setTime(e.target.value)}
+            onChange={(event) =>
+              setTime(
+                event.target.value
+              )
+            }
             placeholder="Exempel: 18:00"
             inputMode="decimal"
             style={{
@@ -457,10 +598,11 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
               margin: "0 0 17px",
               color: "#6b7280",
               fontSize: "12px",
-              lineHeight: "1.4",
             }}
           >
-            Du kan skriva till exempel 18, 18.00 eller 18:00.
+            Du kan skriva till
+            exempel 18, 18.00 eller
+            18:00.
           </p>
 
           <label style={labelStyle}>
@@ -470,7 +612,11 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
           <input
             type="text"
             value={location}
-            onChange={(e) => setLocation(e.target.value)}
+            onChange={(event) =>
+              setLocation(
+                event.target.value
+              )
+            }
             placeholder="Exempel: Hovsta IP"
             style={inputStyle}
           />
@@ -483,8 +629,8 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
               color: "#6b7280",
               fontSize: "12px",
               fontWeight: "bold",
-              letterSpacing: "0.7px",
-              textTransform: "uppercase",
+              textTransform:
+                "uppercase",
             }}
           >
             Innehåll
@@ -494,20 +640,24 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
             style={{
               margin: "0 0 20px",
               color: "#123b2a",
-              fontSize: "21px",
             }}
           >
             🎯 Träningsfokus
           </h2>
 
           <label style={labelStyle}>
-            Vad fokuserar träningen på?
+            Vad fokuserar träningen
+            på?
           </label>
 
           <input
             type="text"
             value={focus}
-            onChange={(e) => setFocus(e.target.value)}
+            onChange={(event) =>
+              setFocus(
+                event.target.value
+              )
+            }
             placeholder="Exempel: Återerövring och kontring"
             style={{
               ...inputStyle,
@@ -521,14 +671,19 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
 
           <textarea
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(event) =>
+              setDescription(
+                event.target.value
+              )
+            }
             placeholder="Beskriv syftet med träningspasset..."
             rows={4}
             style={{
               ...inputStyle,
               fontSize: "15px",
               resize: "vertical",
-              fontFamily: "Arial, sans-serif",
+              fontFamily:
+                "Arial, sans-serif",
             }}
           />
         </section>
@@ -537,36 +692,20 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
           <div
             style={{
               display: "flex",
-              alignItems: "flex-start",
-              justifyContent: "space-between",
-              gap: "12px",
-              marginBottom: "4px",
+              justifyContent:
+                "space-between",
+              alignItems: "center",
+              marginBottom: "14px",
             }}
           >
-            <div>
-              <p
-                style={{
-                  margin: "0 0 6px",
-                  color: "#6b7280",
-                  fontSize: "12px",
-                  fontWeight: "bold",
-                  letterSpacing: "0.7px",
-                  textTransform: "uppercase",
-                }}
-              >
-                Träningsplan
-              </p>
-
-              <h2
-                style={{
-                  margin: 0,
-                  color: "#123b2a",
-                  fontSize: "21px",
-                }}
-              >
-                🏃 Övningar
-              </h2>
-            </div>
+            <h2
+              style={{
+                margin: 0,
+                color: "#123b2a",
+              }}
+            >
+              🏃 Övningar
+            </h2>
 
             <span
               style={{
@@ -582,135 +721,119 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
             </span>
           </div>
 
-          <p
-            style={{
-              color: "#5f6663",
-              lineHeight: "1.5",
-              margin: "12px 0 18px",
-              fontSize: "14px",
-            }}
-          >
-            Lägg till de övningar som ska ingå i
-            träningspasset.
-          </p>
-
-          {exercises.map((exercise, index) => (
-            <div
-              key={exercise.id}
-              style={{
-                padding: "16px",
-                borderRadius: "14px",
-                background: "#f7f9f8",
-                border: "1px solid #e1e7e3",
-                marginBottom: "14px",
-              }}
-            >
+          {exercises.map(
+            (exercise, index) => (
               <div
+                key={exercise.id}
                 style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: "10px",
-                  marginBottom: "13px",
+                  padding: "16px",
+                  borderRadius: "14px",
+                  background:
+                    "#f7f9f8",
+                  border:
+                    "1px solid #e1e7e3",
+                  marginBottom:
+                    "14px",
                 }}
               >
                 <div
                   style={{
                     display: "flex",
-                    alignItems: "center",
-                    gap: "9px",
+                    justifyContent:
+                      "space-between",
+                    alignItems:
+                      "center",
+                    marginBottom:
+                      "13px",
                   }}
                 >
-                  <div
-                    style={{
-                      width: "29px",
-                      height: "29px",
-                      borderRadius: "9px",
-                      background: "#123b2a",
-                      color: "white",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: "13px",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    {index + 1}
-                  </div>
-
                   <strong
                     style={{
-                      color: "#123b2a",
+                      color:
+                        "#123b2a",
                     }}
                   >
                     Övning {index + 1}
                   </strong>
+
+                  {exercises.length >
+                    1 && (
+                    <button
+                      onClick={() =>
+                        removeExercise(
+                          exercise.id
+                        )
+                      }
+                      style={{
+                        border: "none",
+                        background:
+                          "transparent",
+                        color:
+                          "#9b2c2c",
+                        cursor:
+                          "pointer",
+                        fontWeight:
+                          "bold",
+                      }}
+                    >
+                      Ta bort
+                    </button>
+                  )}
                 </div>
 
-                {exercises.length > 1 && (
-                  <button
-                    onClick={() =>
-                      removeExercise(exercise.id)
-                    }
-                    style={{
-                      border: "none",
-                      background: "transparent",
-                      color: "#9b2c2c",
-                      cursor: "pointer",
-                      fontSize: "13px",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    Ta bort
-                  </button>
-                )}
+                <input
+                  type="text"
+                  value={
+                    exercise.name
+                  }
+                  onChange={(event) =>
+                    updateExercise(
+                      exercise.id,
+                      "name",
+                      event.target
+                        .value
+                    )
+                  }
+                  placeholder="Namn på övningen"
+                  style={{
+                    ...inputStyle,
+                    marginBottom:
+                      "10px",
+                  }}
+                />
+
+                <textarea
+                  value={
+                    exercise.description
+                  }
+                  onChange={(event) =>
+                    updateExercise(
+                      exercise.id,
+                      "description",
+                      event.target
+                        .value
+                    )
+                  }
+                  placeholder="Beskriv övningen..."
+                  rows={3}
+                  style={{
+                    ...inputStyle,
+                    resize: "vertical",
+                    fontFamily:
+                      "Arial, sans-serif",
+                  }}
+                />
               </div>
-
-              <input
-                type="text"
-                value={exercise.name}
-                onChange={(e) =>
-                  updateExercise(
-                    exercise.id,
-                    "name",
-                    e.target.value
-                  )
-                }
-                placeholder="Namn på övningen"
-                style={{
-                  ...inputStyle,
-                  fontSize: "15px",
-                  marginBottom: "10px",
-                }}
-              />
-
-              <textarea
-                value={exercise.description}
-                onChange={(e) =>
-                  updateExercise(
-                    exercise.id,
-                    "description",
-                    e.target.value
-                  )
-                }
-                placeholder="Beskriv övningen..."
-                rows={3}
-                style={{
-                  ...inputStyle,
-                  fontSize: "15px",
-                  resize: "vertical",
-                  fontFamily: "Arial, sans-serif",
-                }}
-              />
-            </div>
-          ))}
+            )
+          )}
 
           <button
             onClick={addExercise}
             style={{
               width: "100%",
               padding: "13px",
-              border: "1px dashed #739080",
+              border:
+                "1px dashed #739080",
               borderRadius: "12px",
               background: "#edf4f0",
               color: "#123b2a",
@@ -724,24 +847,10 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
         </section>
 
         <section style={cardStyle}>
-          <p
-            style={{
-              margin: "0 0 6px",
-              color: "#6b7280",
-              fontSize: "12px",
-              fontWeight: "bold",
-              letterSpacing: "0.7px",
-              textTransform: "uppercase",
-            }}
-          >
-            Information till spelarna
-          </p>
-
           <h2
             style={{
               margin: "0 0 16px",
               color: "#123b2a",
-              fontSize: "21px",
             }}
           >
             📝 Övrigt
@@ -749,43 +858,74 @@ function CreateTraining({ onBack }: CreateTrainingProps) {
 
           <textarea
             value={notes}
-            onChange={(e) => setNotes(e.target.value)}
+            onChange={(event) =>
+              setNotes(
+                event.target.value
+              )
+            }
             placeholder="Information som spelarna behöver känna till, till exempel samlingstid eller vad de ska ta med..."
             rows={4}
             style={{
               ...inputStyle,
-              fontSize: "15px",
               resize: "vertical",
-              fontFamily: "Arial, sans-serif",
+              fontFamily:
+                "Arial, sans-serif",
             }}
           />
         </section>
 
+        {errorMessage && (
+          <div
+            style={{
+              background: "#fff1f0",
+              border:
+                "1px solid #f1c0bc",
+              color: "#8a2820",
+              borderRadius: "12px",
+              padding: "13px",
+              marginBottom: "16px",
+              lineHeight: "1.5",
+            }}
+          >
+            {errorMessage}
+          </div>
+        )}
+
         <button
-          onClick={saveTraining}
+          onClick={() =>
+            void saveTraining()
+          }
+          disabled={saving}
           style={{
             width: "100%",
             padding: "16px",
             border: "none",
             borderRadius: "14px",
-            background: "#123b2a",
+            background: saving
+              ? "#6b8277"
+              : "#123b2a",
             color: "white",
             fontSize: "17px",
             fontWeight: "bold",
-            cursor: "pointer",
-            boxShadow: "0 4px 12px rgba(18,59,42,0.15)",
+            cursor: saving
+              ? "not-allowed"
+              : "pointer",
+            boxShadow:
+              "0 4px 12px rgba(18,59,42,0.15)",
           }}
         >
-          Spara och publicera träning
+          {saving
+            ? "Sparar..."
+            : "Spara och publicera träning"}
         </button>
 
         <p
           style={{
-            margin: "20px 0 24px",
+            margin:
+              "20px 0 24px",
             textAlign: "center",
             color: "#9aa29d",
             fontSize: "11px",
-            letterSpacing: "0.5px",
           }}
         >
           HOVSTA IF • LEDARLÄGE

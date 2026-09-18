@@ -1,141 +1,160 @@
-import { useState } from "react"
-import EditTraining from "./EditTraining"
+import { useEffect, useState } from "react"
+import EditTraining, {
+  type TrainingData,
+} from "./EditTraining"
+import { supabase } from "./supabase"
 
 type ManageTrainingsProps = {
   onBack: () => void
 }
 
-type Exercise = {
-  id: number
-  name: string
-  description: string
-}
-
-type TrainingData = {
-  id?: number
-  date: string
-  time: string
-  location: string
-  focus: string
-  description: string
-  exercises: Exercise[]
-  notes: string
-  createdAt: string
-}
-
-function ManageTrainings({ onBack }: ManageTrainingsProps) {
+function ManageTrainings({
+  onBack,
+}: ManageTrainingsProps) {
+  const [trainings, setTrainings] = useState<
+    TrainingData[]
+  >([])
   const [selectedTraining, setSelectedTraining] =
     useState<TrainingData | null>(null)
-
   const [trainingToDelete, setTrainingToDelete] =
     useState<TrainingData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [deleting, setDeleting] = useState(false)
+  const [errorMessage, setErrorMessage] = useState("")
 
-  const [refreshKey, setRefreshKey] = useState(0)
+  const loadTrainings = async () => {
+    setLoading(true)
+    setErrorMessage("")
 
-  const getTrainings = (): TrainingData[] => {
-    const savedTrainings = localStorage.getItem(
-      "hovstaTrainings"
+    const { data, error } = await supabase
+      .from("trainings")
+      .select(
+        "id, date, time, location, focus, description, notes"
+      )
+      .order("date", { ascending: true })
+      .order("time", { ascending: true })
+
+    if (error) {
+      console.error(
+        "Kunde inte hämta träningar:",
+        error
+      )
+      setTrainings([])
+      setErrorMessage(
+        "Kunde inte hämta lagets träningar."
+      )
+      setLoading(false)
+      return
+    }
+
+    setTrainings(
+      (data as TrainingData[] | null) ?? []
     )
-
-    if (!savedTrainings) {
-      return []
-    }
-
-    try {
-      const parsedTrainings = JSON.parse(savedTrainings)
-
-      if (Array.isArray(parsedTrainings)) {
-        return parsedTrainings
-      }
-
-      return []
-    } catch {
-      return []
-    }
+    setLoading(false)
   }
 
-  const trainings = getTrainings()
-
-  const sortedTrainings = [...trainings].sort((a, b) => {
-    const firstDate = new Date(
-      `${a.date}T${a.time || "00:00"}`
-    ).getTime()
-
-    const secondDate = new Date(
-      `${b.date}T${b.time || "00:00"}`
-    ).getTime()
-
-    return firstDate - secondDate
-  })
+  useEffect(() => {
+    void loadTrainings()
+  }, [])
 
   const formatDate = (date: string) => {
     if (!date) {
       return "Datum saknas"
     }
 
-    const dateObject = new Date(`${date}T12:00:00`)
-
     return new Intl.DateTimeFormat("sv-SE", {
       weekday: "long",
       day: "numeric",
       month: "long",
-    }).format(dateObject)
+    }).format(new Date(`${date}T12:00:00`))
   }
 
-  const isSameTraining = (
-    firstTraining: TrainingData,
-    secondTraining: TrainingData
+  const formatTime = (time: string) => {
+    return time?.slice(0, 5) || ""
+  }
+
+  const countExercises = (
+    description: string | null
   ) => {
-    if (
-      firstTraining.id !== undefined &&
-      secondTraining.id !== undefined
-    ) {
-      return firstTraining.id === secondTraining.id
+    if (!description) {
+      return 0
     }
 
-    return (
-      firstTraining.createdAt === secondTraining.createdAt
-    )
+    const marker = "ÖVNINGAR\n"
+    const markerIndex = description.indexOf(marker)
+
+    if (markerIndex === -1) {
+      return 0
+    }
+
+    const exerciseSection = description
+      .slice(markerIndex + marker.length)
+      .trim()
+
+    if (!exerciseSection) {
+      return 0
+    }
+
+    return exerciseSection
+      .split(/\n\n(?=\d+\.\s)/)
+      .filter((item) => /^\d+\.\s/.test(item.trim()))
+      .length
   }
 
-  const handleSaved = () => {
+  const getMainDescription = (
+    description: string | null
+  ) => {
+    if (!description) {
+      return ""
+    }
+
+    const markerIndex =
+      description.indexOf("\n\nÖVNINGAR\n")
+
+    if (markerIndex === -1) {
+      if (description.startsWith("ÖVNINGAR\n")) {
+        return ""
+      }
+
+      return description
+    }
+
+    return description.slice(0, markerIndex).trim()
+  }
+
+  const handleSaved = async () => {
     setSelectedTraining(null)
-    setRefreshKey((current) => current + 1)
+    await loadTrainings()
   }
 
-  const deleteTraining = () => {
-    if (!trainingToDelete) {
+  const deleteTraining = async () => {
+    if (!trainingToDelete || deleting) {
       return
     }
 
-    const savedTrainings = localStorage.getItem(
-      "hovstaTrainings"
-    )
+    setDeleting(true)
+    setErrorMessage("")
 
-    if (!savedTrainings) {
-      setTrainingToDelete(null)
+    const { error } = await supabase
+      .from("trainings")
+      .delete()
+      .eq("id", trainingToDelete.id)
+
+    if (error) {
+      console.error(
+        "Kunde inte ta bort träning:",
+        error
+      )
+      setErrorMessage(
+        "Träningen kunde inte tas bort."
+      )
+      setDeleting(false)
       return
     }
 
-    try {
-      const currentTrainings: TrainingData[] =
-        JSON.parse(savedTrainings)
-
-      const remainingTrainings = currentTrainings.filter(
-        (training) =>
-          !isSameTraining(training, trainingToDelete)
-      )
-
-      localStorage.setItem(
-        "hovstaTrainings",
-        JSON.stringify(remainingTrainings)
-      )
-
-      setTrainingToDelete(null)
-      setRefreshKey((current) => current + 1)
-    } catch {
-      alert("Något gick fel när träningen skulle tas bort.")
-    }
+    setTrainingToDelete(null)
+    setDeleting(false)
+    await loadTrainings()
   }
 
   if (selectedTraining) {
@@ -143,14 +162,15 @@ function ManageTrainings({ onBack }: ManageTrainingsProps) {
       <EditTraining
         training={selectedTraining}
         onBack={() => setSelectedTraining(null)}
-        onSaved={handleSaved}
+        onSaved={() => {
+          void handleSaved()
+        }}
       />
     )
   }
 
   return (
     <div
-      key={refreshKey}
       style={{
         minHeight: "100vh",
         background: "#f4f6f5",
@@ -207,7 +227,6 @@ function ManageTrainings({ onBack }: ManageTrainingsProps) {
               fontSize: "13px",
               fontWeight: "bold",
               letterSpacing: "1px",
-              textTransform: "uppercase",
             }}
           >
             HOVSTA IF • LEDARLÄGE
@@ -217,7 +236,6 @@ function ManageTrainings({ onBack }: ManageTrainingsProps) {
             style={{
               margin: "8px 0 6px",
               fontSize: "29px",
-              letterSpacing: "-0.5px",
             }}
           >
             Hantera träningar ⚽
@@ -231,7 +249,8 @@ function ManageTrainings({ onBack }: ManageTrainingsProps) {
               lineHeight: "1.5",
             }}
           >
-            Se, redigera och hantera lagets träningspass.
+            Se, redigera och hantera lagets
+            träningspass.
           </p>
         </div>
       </header>
@@ -259,7 +278,6 @@ function ManageTrainings({ onBack }: ManageTrainingsProps) {
                 color: "#123b2a",
                 fontSize: "12px",
                 fontWeight: "bold",
-                letterSpacing: "0.8px",
                 textTransform: "uppercase",
               }}
             >
@@ -287,187 +305,214 @@ function ManageTrainings({ onBack }: ManageTrainingsProps) {
               whiteSpace: "nowrap",
             }}
           >
-            {sortedTrainings.length}{" "}
-            {sortedTrainings.length === 1
-              ? "träningspass"
-              : "träningspass"}
+            {trainings.length} träningspass
           </div>
         </div>
 
-        {sortedTrainings.length > 0 ? (
-          sortedTrainings.map((training) => (
-            <section
-              key={
-                training.id ??
-                `${training.date}-${training.time}-${training.createdAt}`
-              }
-              style={{
-                background: "white",
-                borderRadius: "18px",
-                marginBottom: "14px",
-                boxShadow:
-                  "0 3px 14px rgba(18,59,42,0.07)",
-                border: "1px solid #edf0ee",
-                overflow: "hidden",
-              }}
-            >
-              <div
-                style={{
-                  height: "4px",
-                  background: "#f39200",
-                }}
-              />
+        {errorMessage && (
+          <div
+            style={{
+              background: "#fff1f0",
+              border: "1px solid #f1c0bc",
+              color: "#8a2820",
+              borderRadius: "12px",
+              padding: "13px",
+              marginBottom: "16px",
+            }}
+          >
+            {errorMessage}
+          </div>
+        )}
 
-              <div
+        {loading ? (
+          <section
+            style={{
+              background: "white",
+              borderRadius: "18px",
+              padding: "30px 20px",
+              textAlign: "center",
+              border: "1px solid #edf0ee",
+            }}
+          >
+            <strong style={{ color: "#123b2a" }}>
+              Hämtar träningar...
+            </strong>
+          </section>
+        ) : trainings.length > 0 ? (
+          trainings.map((training) => {
+            const exerciseCount = countExercises(
+              training.description
+            )
+            const mainDescription =
+              getMainDescription(training.description)
+
+            return (
+              <section
+                key={training.id}
                 style={{
-                  padding: "18px 20px 20px",
+                  background: "white",
+                  borderRadius: "18px",
+                  marginBottom: "14px",
+                  boxShadow:
+                    "0 3px 14px rgba(18,59,42,0.07)",
+                  border: "1px solid #edf0ee",
+                  overflow: "hidden",
                 }}
               >
                 <div
                   style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    justifyContent: "space-between",
-                    gap: "15px",
+                    height: "4px",
+                    background: "#f39200",
+                  }}
+                />
+
+                <div
+                  style={{
+                    padding: "18px 20px 20px",
                   }}
                 >
                   <div
                     style={{
-                      flex: 1,
-                      minWidth: 0,
+                      display: "flex",
+                      alignItems: "flex-start",
+                      justifyContent: "space-between",
+                      gap: "15px",
+                    }}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <p
+                        style={{
+                          margin: 0,
+                          color: "#6b7280",
+                          fontSize: "13px",
+                          fontWeight: "bold",
+                          textTransform: "capitalize",
+                        }}
+                      >
+                        {formatDate(training.date)}
+                      </p>
+
+                      <h2
+                        style={{
+                          margin: "7px 0 5px",
+                          color: "#123b2a",
+                          fontSize: "21px",
+                        }}
+                      >
+                        {training.focus}
+                      </h2>
+                    </div>
+
+                    <div
+                      style={{
+                        background: "#edf4f0",
+                        color: "#123b2a",
+                        borderRadius: "11px",
+                        padding: "8px 11px",
+                        fontSize: "14px",
+                        fontWeight: "bold",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      🕒 {formatTime(training.time)}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: "14px",
+                      padding: "13px 14px",
+                      borderRadius: "12px",
+                      background: "#f7f9f8",
                     }}
                   >
                     <p
                       style={{
-                        margin: 0,
-                        color: "#6b7280",
-                        fontSize: "13px",
-                        fontWeight: "bold",
-                        textTransform: "capitalize",
+                        margin: "0 0 7px",
+                        color: "#526158",
+                        fontSize: "14px",
                       }}
                     >
-                      {formatDate(training.date)}
+                      📍 {training.location}
                     </p>
 
-                    <h2
+                    <p
                       style={{
-                        margin: "7px 0 5px",
-                        color: "#123b2a",
-                        fontSize: "21px",
+                        margin: 0,
+                        color: "#526158",
+                        fontSize: "14px",
                       }}
                     >
-                      {training.focus}
-                    </h2>
+                      ⚽ {exerciseCount}{" "}
+                      {exerciseCount === 1
+                        ? "övning"
+                        : "övningar"}
+                    </p>
                   </div>
+
+                  {mainDescription && (
+                    <p
+                      style={{
+                        margin: "14px 0 0",
+                        color: "#5f6663",
+                        fontSize: "14px",
+                        lineHeight: "1.5",
+                        whiteSpace: "pre-wrap",
+                      }}
+                    >
+                      {mainDescription}
+                    </p>
+                  )}
 
                   <div
                     style={{
-                      background: "#edf4f0",
-                      color: "#123b2a",
-                      borderRadius: "11px",
-                      padding: "8px 11px",
-                      fontSize: "14px",
-                      fontWeight: "bold",
-                      whiteSpace: "nowrap",
+                      display: "flex",
+                      gap: "10px",
+                      marginTop: "18px",
                     }}
                   >
-                    🕒 {training.time}
+                    <button
+                      onClick={() =>
+                        setSelectedTraining(training)
+                      }
+                      style={{
+                        flex: 1,
+                        padding: "12px",
+                        border: "none",
+                        borderRadius: "11px",
+                        background: "#123b2a",
+                        color: "white",
+                        fontSize: "14px",
+                        fontWeight: "bold",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Redigera
+                    </button>
+
+                    <button
+                      onClick={() =>
+                        setTrainingToDelete(training)
+                      }
+                      style={{
+                        flex: 1,
+                        padding: "12px",
+                        border: "1px solid #ead0d0",
+                        borderRadius: "11px",
+                        background: "#fff8f8",
+                        color: "#9b2c2c",
+                        fontSize: "14px",
+                        fontWeight: "bold",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Ta bort
+                    </button>
                   </div>
                 </div>
-
-                <div
-                  style={{
-                    marginTop: "14px",
-                    padding: "13px 14px",
-                    borderRadius: "12px",
-                    background: "#f7f9f8",
-                  }}
-                >
-                  <p
-                    style={{
-                      margin: "0 0 7px",
-                      color: "#526158",
-                      fontSize: "14px",
-                    }}
-                  >
-                    📍 {training.location}
-                  </p>
-
-                  <p
-                    style={{
-                      margin: 0,
-                      color: "#526158",
-                      fontSize: "14px",
-                    }}
-                  >
-                    ⚽ {training.exercises?.length ?? 0}{" "}
-                    {training.exercises?.length === 1
-                      ? "övning"
-                      : "övningar"}
-                  </p>
-                </div>
-
-                {training.description && (
-                  <p
-                    style={{
-                      margin: "14px 0 0",
-                      color: "#5f6663",
-                      fontSize: "14px",
-                      lineHeight: "1.5",
-                    }}
-                  >
-                    {training.description}
-                  </p>
-                )}
-
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "10px",
-                    marginTop: "18px",
-                  }}
-                >
-                  <button
-                    onClick={() =>
-                      setSelectedTraining(training)
-                    }
-                    style={{
-                      flex: 1,
-                      padding: "12px",
-                      border: "none",
-                      borderRadius: "11px",
-                      background: "#123b2a",
-                      color: "white",
-                      fontSize: "14px",
-                      fontWeight: "bold",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Redigera
-                  </button>
-
-                  <button
-                    onClick={() =>
-                      setTrainingToDelete(training)
-                    }
-                    style={{
-                      flex: 1,
-                      padding: "12px",
-                      border: "1px solid #ead0d0",
-                      borderRadius: "11px",
-                      background: "#fff8f8",
-                      color: "#9b2c2c",
-                      fontSize: "14px",
-                      fontWeight: "bold",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Ta bort
-                  </button>
-                </div>
-              </div>
-            </section>
-          ))
+              </section>
+            )
+          })
         ) : (
           <section
             style={{
@@ -510,11 +555,10 @@ function ManageTrainings({ onBack }: ManageTrainingsProps) {
               style={{
                 margin: 0,
                 color: "#5f6663",
-                lineHeight: "1.5",
               }}
             >
-              När du skapar ett träningspass kommer
-              det att visas här.
+              När ett träningspass skapas visas
+              det här.
             </p>
           </section>
         )}
@@ -525,7 +569,6 @@ function ManageTrainings({ onBack }: ManageTrainingsProps) {
             textAlign: "center",
             color: "#9aa29d",
             fontSize: "11px",
-            letterSpacing: "0.5px",
           }}
         >
           HOVSTA IF • LEDARLÄGE
@@ -536,10 +579,7 @@ function ManageTrainings({ onBack }: ManageTrainingsProps) {
         <div
           style={{
             position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
+            inset: 0,
             background: "rgba(10,20,15,0.55)",
             display: "flex",
             alignItems: "center",
@@ -566,11 +606,7 @@ function ManageTrainings({ onBack }: ManageTrainingsProps) {
               }}
             />
 
-            <div
-              style={{
-                padding: "24px",
-              }}
-            >
+            <div style={{ padding: "24px" }}>
               <div
                 style={{
                   width: "52px",
@@ -587,22 +623,11 @@ function ManageTrainings({ onBack }: ManageTrainingsProps) {
                 🗑️
               </div>
 
-              <h2
-                style={{
-                  margin: "0 0 10px",
-                  color: "#17202a",
-                }}
-              >
+              <h2 style={{ margin: "0 0 10px" }}>
                 Ta bort träning?
               </h2>
 
-              <p
-                style={{
-                  color: "#5f6663",
-                  lineHeight: "1.6",
-                  margin: "0 0 6px",
-                }}
-              >
+              <p style={{ color: "#5f6663" }}>
                 Är du säker på att du vill ta bort:
               </p>
 
@@ -611,7 +636,6 @@ function ManageTrainings({ onBack }: ManageTrainingsProps) {
                   color: "#123b2a",
                   fontWeight: "bold",
                   fontSize: "19px",
-                  margin: "0 0 6px",
                 }}
               >
                 {trainingToDelete.focus}
@@ -620,13 +644,12 @@ function ManageTrainings({ onBack }: ManageTrainingsProps) {
               <p
                 style={{
                   color: "#6b7280",
-                  margin: "0 0 20px",
                   textTransform: "capitalize",
                   fontSize: "14px",
                 }}
               >
                 {formatDate(trainingToDelete.date)} •{" "}
-                {trainingToDelete.time}
+                {formatTime(trainingToDelete.time)}
               </p>
 
               <div
@@ -637,12 +660,10 @@ function ManageTrainings({ onBack }: ManageTrainingsProps) {
                   padding: "13px 14px",
                   borderRadius: "11px",
                   fontSize: "14px",
-                  lineHeight: "1.5",
                   marginBottom: "20px",
                 }}
               >
-                Träningspasset och informationen i
-                passet kommer att tas bort.
+                Träningspasset kommer att tas bort.
               </div>
 
               <div
@@ -655,14 +676,13 @@ function ManageTrainings({ onBack }: ManageTrainingsProps) {
                   onClick={() =>
                     setTrainingToDelete(null)
                   }
+                  disabled={deleting}
                   style={{
                     flex: 1,
                     padding: "13px",
                     border: "1px solid #d7ddd9",
                     borderRadius: "11px",
                     background: "white",
-                    color: "#17202a",
-                    fontSize: "15px",
                     fontWeight: "bold",
                     cursor: "pointer",
                   }}
@@ -671,7 +691,8 @@ function ManageTrainings({ onBack }: ManageTrainingsProps) {
                 </button>
 
                 <button
-                  onClick={deleteTraining}
+                  onClick={() => void deleteTraining()}
+                  disabled={deleting}
                   style={{
                     flex: 1,
                     padding: "13px",
@@ -679,12 +700,15 @@ function ManageTrainings({ onBack }: ManageTrainingsProps) {
                     borderRadius: "11px",
                     background: "#9b2c2c",
                     color: "white",
-                    fontSize: "15px",
                     fontWeight: "bold",
-                    cursor: "pointer",
+                    cursor: deleting
+                      ? "not-allowed"
+                      : "pointer",
                   }}
                 >
-                  Ta bort
+                  {deleting
+                    ? "Tar bort..."
+                    : "Ta bort"}
                 </button>
               </div>
             </div>

@@ -1,38 +1,27 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { supabase } from "./supabase"
 
 type CheckInProps = {
   onBack: () => void
 }
 
-type Exercise = {
-  id: number
-  name: string
-  description: string
-}
-
 type TrainingData = {
-  id?: number
+  id: string
   date: string
   time: string
   location: string
   focus: string
-  description: string
-  exercises: Exercise[]
-  notes: string
-  createdAt: string
+  description: string | null
+  notes: string | null
 }
 
-type CheckInData = {
-  id: number
-  trainingId: number | string
-  playerName: string
-  mood: number | null
-  moodReason: string
-  energy: number | null
-  pain: string
-  other: string
-  date: string
-}
+type CheckInStatus =
+  | "loading"
+  | "noTraining"
+  | "tooEarly"
+  | "closed"
+  | "completed"
+  | "open"
 
 function CheckIn({ onBack }: CheckInProps) {
   const [mood, setMood] = useState<number | null>(null)
@@ -40,9 +29,19 @@ function CheckIn({ onBack }: CheckInProps) {
   const [pain, setPain] = useState("")
   const [moodReason, setMoodReason] = useState("")
   const [other, setOther] = useState("")
-  const [saved, setSaved] = useState(false)
 
-  const playerName = "Testspelare"
+  const [training, setTraining] =
+    useState<TrainingData | null>(null)
+
+  const [playerId, setPlayerId] =
+    useState<string | null>(null)
+
+  const [status, setStatus] =
+    useState<CheckInStatus>("loading")
+
+  const [saved, setSaved] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [errorMessage, setErrorMessage] = useState("")
 
   const moodOptions = [
     { value: 1, emoji: "😞", label: "Inte bra" },
@@ -60,107 +59,19 @@ function CheckIn({ onBack }: CheckInProps) {
     { value: 5, emoji: "⚡", label: "Massor av energi" },
   ]
 
-  const getTrainings = (): TrainingData[] => {
-    const savedTrainings =
-      localStorage.getItem("hovstaTrainings")
-
-    if (!savedTrainings) {
-      return []
-    }
-
-    try {
-      const parsedTrainings =
-        JSON.parse(savedTrainings)
-
-      if (Array.isArray(parsedTrainings)) {
-        return parsedTrainings
-      }
-
-      return []
-    } catch {
-      return []
-    }
-  }
-
   const getTrainingDateTime = (
-    training: TrainingData
+    selectedTraining: TrainingData
   ) => {
-    if (!training.date) {
-      return Number.POSITIVE_INFINITY
-    }
-
     const time =
-      training.time &&
-      /^\d{1,2}:\d{2}$/.test(training.time)
-        ? training.time
-        : "23:59"
+      selectedTraining.time?.slice(0, 5) || "23:59"
 
-    const dateTime = new Date(
-      `${training.date}T${time}:00`
+    return new Date(
+      `${selectedTraining.date}T${time}:00`
     ).getTime()
-
-    if (Number.isNaN(dateTime)) {
-      return Number.POSITIVE_INFINITY
-    }
-
-    return dateTime
-  }
-
-  const getTrainingId = (
-    training: TrainingData
-  ): number | string => {
-    if (training.id !== undefined) {
-      return training.id
-    }
-
-    return training.createdAt
-  }
-
-  const getNextTraining = (): TrainingData | null => {
-    const now = Date.now()
-
-    const upcomingTrainings = getTrainings()
-      .filter(
-        (training) =>
-          getTrainingDateTime(training) >= now
-      )
-      .sort(
-        (a, b) =>
-          getTrainingDateTime(a) -
-          getTrainingDateTime(b)
-      )
-
-    return upcomingTrainings[0] ?? null
-  }
-
-  const training = getNextTraining()
-
-  const getCheckIns = (): CheckInData[] => {
-    const savedCheckIns =
-      localStorage.getItem("hovstaCheckIns")
-
-    if (!savedCheckIns) {
-      return []
-    }
-
-    try {
-      const parsedCheckIns =
-        JSON.parse(savedCheckIns)
-
-      if (Array.isArray(parsedCheckIns)) {
-        return parsedCheckIns
-      }
-
-      return []
-    } catch {
-      return []
-    }
   }
 
   const formatTrainingDate = (date: string) => {
-    const dateObject = new Date(
-      `${date}T12:00:00`
-    )
+    const dateObject = new Date(`${date}T12:00:00`)
 
     return new Intl.DateTimeFormat("sv-SE", {
       weekday: "long",
@@ -169,94 +80,129 @@ function CheckIn({ onBack }: CheckInProps) {
     }).format(dateObject)
   }
 
-  const hasAlreadyCheckedIn = () => {
-    if (!training) {
-      return false
-    }
+  useEffect(() => {
+    let cancelled = false
 
-    const trainingId = getTrainingId(training)
+    const loadCheckIn = async () => {
+      setStatus("loading")
+      setErrorMessage("")
 
-    return getCheckIns().some(
-      (checkIn) =>
-        String(checkIn.trainingId) ===
-          String(trainingId) &&
-        checkIn.playerName === playerName
-    )
-  }
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser()
 
-  const alreadyCheckedIn =
-    hasAlreadyCheckedIn()
+      if (cancelled) return
 
-  const getCheckInStatus = () => {
-    if (!training) {
-      return {
-        status: "noTraining",
-        hoursUntilOpen: 0,
+      if (userError || !user) {
+        setErrorMessage(
+          "Din inloggning kunde inte hämtas. Logga in igen."
+        )
+        setStatus("noTraining")
+        return
       }
-    }
 
-    const now = Date.now()
-    const trainingTime =
-      getTrainingDateTime(training)
+      setPlayerId(user.id)
 
-    const sixHours =
-      6 * 60 * 60 * 1000
+      const { data: trainings, error: trainingError } =
+        await supabase
+          .from("trainings")
+          .select(
+            "id, date, time, location, focus, description, notes"
+          )
+          .order("date", { ascending: true })
+          .order("time", { ascending: true })
 
-    const openTime =
-      trainingTime - sixHours
+      if (cancelled) return
 
-    if (now < openTime) {
-      return {
-        status: "tooEarly",
-        hoursUntilOpen:
-          (openTime - now) /
-          (60 * 60 * 1000),
+      if (trainingError) {
+        console.error(trainingError)
+        setErrorMessage(
+          "Kunde inte hämta träningarna."
+        )
+        setStatus("noTraining")
+        return
       }
-    }
 
-    if (now >= trainingTime) {
-      return {
-        status: "closed",
-        hoursUntilOpen: 0,
+      const now = Date.now()
+
+      const nextTraining =
+        (trainings as TrainingData[] | null)?.find(
+          (item) => getTrainingDateTime(item) >= now
+        ) ?? null
+
+      if (!nextTraining) {
+        setTraining(null)
+        setStatus("noTraining")
+        return
       }
-    }
 
-    if (alreadyCheckedIn) {
-      return {
-        status: "completed",
-        hoursUntilOpen: 0,
+      setTraining(nextTraining)
+
+      const trainingTime =
+        getTrainingDateTime(nextTraining)
+
+      const openTime =
+        trainingTime - 6 * 60 * 60 * 1000
+
+      if (now < openTime) {
+        setStatus("tooEarly")
+        return
       }
+
+      if (now >= trainingTime) {
+        setStatus("closed")
+        return
+      }
+
+      const { data: existingCheckIn, error: checkInError } =
+        await supabase
+          .from("check_ins")
+          .select("id")
+          .eq("training_id", nextTraining.id)
+          .eq("player_id", user.id)
+          .maybeSingle()
+
+      if (cancelled) return
+
+      if (checkInError) {
+        console.error(checkInError)
+        setErrorMessage(
+          "Kunde inte kontrollera din check-in."
+        )
+        setStatus("noTraining")
+        return
+      }
+
+      if (existingCheckIn) {
+        setStatus("completed")
+        return
+      }
+
+      setStatus("open")
     }
 
-    return {
-      status: "open",
-      hoursUntilOpen: 0,
+    void loadCheckIn()
+
+    return () => {
+      cancelled = true
     }
-  }
+  }, [])
 
-  const checkInStatus = getCheckInStatus()
-
-  const saveCheckIn = () => {
-    if (!training) {
+  const saveCheckIn = async () => {
+    if (!training || !playerId || saving) {
       return
     }
 
-    /*
-      Vi kontrollerar tiden igen precis när
-      spelaren trycker på Skicka.
-    */
     const now = Date.now()
     const trainingTime =
       getTrainingDateTime(training)
 
     const openTime =
-      trainingTime -
-      6 * 60 * 60 * 1000
+      trainingTime - 6 * 60 * 60 * 1000
 
     if (now < openTime) {
-      alert(
-        "Check-in har inte öppnat ännu."
-      )
+      alert("Check-in har inte öppnat ännu.")
       return
     }
 
@@ -264,6 +210,7 @@ function CheckIn({ onBack }: CheckInProps) {
       alert(
         "Check-in är stängd eftersom träningen har börjat."
       )
+      setStatus("closed")
       return
     }
 
@@ -274,65 +221,113 @@ function CheckIn({ onBack }: CheckInProps) {
       return
     }
 
-    const currentCheckIns = getCheckIns()
+    setSaving(true)
+    setErrorMessage("")
 
-    const trainingId =
-      getTrainingId(training)
+    const { data: existingCheckIn, error: duplicateError } =
+      await supabase
+        .from("check_ins")
+        .select("id")
+        .eq("training_id", training.id)
+        .eq("player_id", playerId)
+        .maybeSingle()
 
-    const duplicateCheckIn =
-      currentCheckIns.some(
-        (checkIn) =>
-          String(checkIn.trainingId) ===
-            String(trainingId) &&
-          checkIn.playerName === playerName
+    if (duplicateError) {
+      console.error(duplicateError)
+      setErrorMessage(
+        "Kunde inte kontrollera din check-in."
       )
-
-    if (duplicateCheckIn) {
-      alert(
-        "Du har redan gjort din check-in inför den här träningen."
-      )
+      setSaving(false)
       return
     }
 
-    const newCheckIn: CheckInData = {
-      id: Date.now(),
-      trainingId,
-      playerName,
-      mood,
-      moodReason,
-      energy,
-      pain,
-      other,
-      date: new Date().toISOString(),
+    if (existingCheckIn) {
+      setStatus("completed")
+      setSaving(false)
+      return
     }
 
-    const updatedCheckIns = [
-      ...currentCheckIns,
-      newCheckIn,
-    ]
+    const { error } = await supabase
+      .from("check_ins")
+      .insert({
+        training_id: training.id,
+        player_id: playerId,
+        mood,
+        mood_reason: moodReason.trim() || null,
+        energy,
+        pain: pain.trim() || null,
+        other: other.trim() || null,
+      })
 
-    localStorage.setItem(
-      "hovstaCheckIns",
-      JSON.stringify(updatedCheckIns)
-    )
+    if (error) {
+      console.error(error)
+      setErrorMessage(
+        "Check-in kunde inte sparas. Försök igen."
+      )
+      setSaving(false)
+      return
+    }
 
     setSaved(true)
+    setSaving(false)
 
-    setTimeout(() => onBack(), 1500)
+    setTimeout(() => {
+      onBack()
+    }, 1500)
+  }
+
+  const pageStyle: React.CSSProperties = {
+    minHeight: "100vh",
+    background: "#f4f6f8",
+    fontFamily: "Arial, sans-serif",
+    color: "#17202a",
+  }
+
+  const cardStyle: React.CSSProperties = {
+    background: "white",
+    borderRadius: "18px",
+    padding: "20px",
+    marginBottom: "16px",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+  }
+
+  if (status === "loading") {
+    return (
+      <div
+        style={{
+          ...pageStyle,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <div style={{ textAlign: "center" }}>
+          <div
+            style={{
+              fontSize: "38px",
+              marginBottom: "12px",
+            }}
+          >
+            ⚽
+          </div>
+
+          <strong style={{ color: "#123b2a" }}>
+            Hämtar check-in...
+          </strong>
+        </div>
+      </div>
+    )
   }
 
   if (saved) {
     return (
       <div
         style={{
-          minHeight: "100vh",
-          background: "#f4f6f8",
-          fontFamily: "Arial, sans-serif",
+          ...pageStyle,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           padding: "20px",
-          color: "#17202a",
         }}
       >
         <div
@@ -389,19 +384,9 @@ function CheckIn({ onBack }: CheckInProps) {
     )
   }
 
-  if (
-    !training ||
-    checkInStatus.status === "noTraining"
-  ) {
+  if (!training || status === "noTraining") {
     return (
-      <div
-        style={{
-          minHeight: "100vh",
-          background: "#f4f6f8",
-          fontFamily: "Arial, sans-serif",
-          color: "#17202a",
-        }}
-      >
+      <div style={pageStyle}>
         <button
           onClick={onBack}
           style={{
@@ -425,12 +410,9 @@ function CheckIn({ onBack }: CheckInProps) {
         >
           <section
             style={{
-              background: "white",
-              borderRadius: "20px",
-              padding: "35px 20px",
+              ...cardStyle,
               textAlign: "center",
-              boxShadow:
-                "0 2px 8px rgba(0,0,0,0.06)",
+              padding: "35px 20px",
             }}
           >
             <div
@@ -458,8 +440,8 @@ function CheckIn({ onBack }: CheckInProps) {
                 lineHeight: "1.5",
               }}
             >
-              Check-in blir tillgänglig när det finns
-              en kommande träning.
+              {errorMessage ||
+                "Check-in blir tillgänglig när det finns en kommande träning."}
             </p>
           </section>
         </main>
@@ -467,13 +449,12 @@ function CheckIn({ onBack }: CheckInProps) {
     )
   }
 
-  if (checkInStatus.status === "tooEarly") {
+  if (status === "tooEarly") {
     const trainingTime =
       getTrainingDateTime(training)
 
     const openTime = new Date(
-      trainingTime -
-        6 * 60 * 60 * 1000
+      trainingTime - 6 * 60 * 60 * 1000
     )
 
     const formattedOpenTime =
@@ -484,14 +465,7 @@ function CheckIn({ onBack }: CheckInProps) {
       }).format(openTime)
 
     return (
-      <div
-        style={{
-          minHeight: "100vh",
-          background: "#f4f6f8",
-          fontFamily: "Arial, sans-serif",
-          color: "#17202a",
-        }}
-      >
+      <div style={pageStyle}>
         <button
           onClick={onBack}
           style={{
@@ -515,12 +489,9 @@ function CheckIn({ onBack }: CheckInProps) {
         >
           <section
             style={{
-              background: "white",
-              borderRadius: "20px",
-              padding: "35px 20px",
+              ...cardStyle,
               textAlign: "center",
-              boxShadow:
-                "0 2px 8px rgba(0,0,0,0.06)",
+              padding: "35px 20px",
             }}
           >
             <div
@@ -541,14 +512,8 @@ function CheckIn({ onBack }: CheckInProps) {
               Check-in är inte öppen ännu
             </h2>
 
-            <p
-              style={{
-                color: "#555",
-                lineHeight: "1.6",
-              }}
-            >
-              Check-in öppnar 6 timmar före
-              träningen.
+            <p style={{ color: "#555" }}>
+              Check-in öppnar 6 timmar före träningen.
             </p>
 
             <div
@@ -571,7 +536,7 @@ function CheckIn({ onBack }: CheckInProps) {
               </strong>
 
               <span style={{ color: "#555" }}>
-                ⚽ {training.time} •{" "}
+                ⚽ {training.time.slice(0, 5)} •{" "}
                 {training.location}
               </span>
             </div>
@@ -592,16 +557,9 @@ function CheckIn({ onBack }: CheckInProps) {
     )
   }
 
-  if (checkInStatus.status === "completed") {
+  if (status === "closed") {
     return (
-      <div
-        style={{
-          minHeight: "100vh",
-          background: "#f4f6f8",
-          fontFamily: "Arial, sans-serif",
-          color: "#17202a",
-        }}
-      >
+      <div style={pageStyle}>
         <button
           onClick={onBack}
           style={{
@@ -625,12 +583,54 @@ function CheckIn({ onBack }: CheckInProps) {
         >
           <section
             style={{
-              background: "white",
-              borderRadius: "20px",
-              padding: "35px 20px",
+              ...cardStyle,
               textAlign: "center",
-              boxShadow:
-                "0 2px 8px rgba(0,0,0,0.06)",
+            }}
+          >
+            <div style={{ fontSize: "42px" }}>🔒</div>
+
+            <h2 style={{ color: "#123b2a" }}>
+              Check-in har stängt
+            </h2>
+
+            <p style={{ color: "#666" }}>
+              Träningen har redan börjat.
+            </p>
+          </section>
+        </main>
+      </div>
+    )
+  }
+
+  if (status === "completed") {
+    return (
+      <div style={pageStyle}>
+        <button
+          onClick={onBack}
+          style={{
+            margin: "16px 20px 0",
+            background: "white",
+            border: "1px solid #ddd",
+            borderRadius: "10px",
+            padding: "10px 14px",
+            cursor: "pointer",
+          }}
+        >
+          ← Tillbaka
+        </button>
+
+        <main
+          style={{
+            maxWidth: "600px",
+            margin: "0 auto",
+            padding: "40px 20px",
+          }}
+        >
+          <section
+            style={{
+              ...cardStyle,
+              textAlign: "center",
+              padding: "35px 20px",
             }}
           >
             <div
@@ -664,7 +664,6 @@ function CheckIn({ onBack }: CheckInProps) {
               style={{
                 margin: "0 0 20px",
                 color: "#666",
-                lineHeight: "1.5",
               }}
             >
               Din check-in inför den här träningen
@@ -690,7 +689,7 @@ function CheckIn({ onBack }: CheckInProps) {
               </strong>
 
               <span style={{ color: "#555" }}>
-                ⚽ {training.time} •{" "}
+                ⚽ {training.time.slice(0, 5)} •{" "}
                 {training.location}
               </span>
             </div>
@@ -701,14 +700,7 @@ function CheckIn({ onBack }: CheckInProps) {
   }
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#f4f6f8",
-        fontFamily: "Arial, sans-serif",
-        color: "#17202a",
-      }}
-    >
+    <div style={pageStyle}>
       <button
         onClick={onBack}
         style={{
@@ -747,6 +739,7 @@ function CheckIn({ onBack }: CheckInProps) {
           style={{
             margin: "8px 0 4px",
             fontSize: "28px",
+            color: "white",
           }}
         >
           Check-in 💚
@@ -807,20 +800,12 @@ function CheckIn({ onBack }: CheckInProps) {
             }}
           >
             {formatTrainingDate(training.date)} •{" "}
-            {training.time} • {training.location}
+            {training.time.slice(0, 5)} •{" "}
+            {training.location}
           </p>
         </section>
 
-        <section
-          style={{
-            background: "white",
-            borderRadius: "18px",
-            padding: "20px",
-            marginBottom: "16px",
-            boxShadow:
-              "0 2px 8px rgba(0,0,0,0.06)",
-          }}
-        >
+        <section style={cardStyle}>
           <h2 style={{ marginTop: 0 }}>
             Hur mår du idag?
           </h2>
@@ -835,9 +820,7 @@ function CheckIn({ onBack }: CheckInProps) {
             {moodOptions.map((option) => (
               <button
                 key={option.value}
-                onClick={() =>
-                  setMood(option.value)
-                }
+                onClick={() => setMood(option.value)}
                 style={{
                   flex: 1,
                   padding: "10px 4px",
@@ -896,8 +879,8 @@ function CheckIn({ onBack }: CheckInProps) {
 
             <textarea
               value={moodReason}
-              onChange={(e) =>
-                setMoodReason(e.target.value)
+              onChange={(event) =>
+                setMoodReason(event.target.value)
               }
               placeholder="Skriv här..."
               rows={4}
@@ -914,16 +897,7 @@ function CheckIn({ onBack }: CheckInProps) {
           </section>
         )}
 
-        <section
-          style={{
-            background: "white",
-            borderRadius: "18px",
-            padding: "20px",
-            marginBottom: "16px",
-            boxShadow:
-              "0 2px 8px rgba(0,0,0,0.06)",
-          }}
-        >
+        <section style={cardStyle}>
           <h2 style={{ marginTop: 0 }}>
             Hur mycket energi har du?
           </h2>
@@ -987,24 +961,15 @@ function CheckIn({ onBack }: CheckInProps) {
           </div>
         </section>
 
-        <section
-          style={{
-            background: "white",
-            borderRadius: "18px",
-            padding: "20px",
-            marginBottom: "16px",
-            boxShadow:
-              "0 2px 8px rgba(0,0,0,0.06)",
-          }}
-        >
+        <section style={cardStyle}>
           <h2 style={{ marginTop: 0 }}>
             Har du ont någonstans?
           </h2>
 
           <textarea
             value={pain}
-            onChange={(e) =>
-              setPain(e.target.value)
+            onChange={(event) =>
+              setPain(event.target.value)
             }
             placeholder="Exempel: ont i knät, stel i baksida lår, inget..."
             rows={3}
@@ -1020,24 +985,15 @@ function CheckIn({ onBack }: CheckInProps) {
           />
         </section>
 
-        <section
-          style={{
-            background: "white",
-            borderRadius: "18px",
-            padding: "20px",
-            marginBottom: "16px",
-            boxShadow:
-              "0 2px 8px rgba(0,0,0,0.06)",
-          }}
-        >
+        <section style={cardStyle}>
           <h2 style={{ marginTop: 0 }}>
             Är det något annat du vill lyfta?
           </h2>
 
           <textarea
             value={other}
-            onChange={(e) =>
-              setOther(e.target.value)
+            onChange={(event) =>
+              setOther(event.target.value)
             }
             placeholder="Det här är frivilligt..."
             rows={3}
@@ -1053,22 +1009,44 @@ function CheckIn({ onBack }: CheckInProps) {
           />
         </section>
 
+        {errorMessage && (
+          <div
+            style={{
+              background: "#fff1f0",
+              border: "1px solid #f1c0bc",
+              color: "#8a2820",
+              borderRadius: "12px",
+              padding: "12px",
+              marginBottom: "14px",
+            }}
+          >
+            {errorMessage}
+          </div>
+        )}
+
         <button
-          onClick={saveCheckIn}
+          onClick={() => void saveCheckIn()}
+          disabled={saving}
           style={{
             width: "100%",
             padding: "16px",
             border: "none",
             borderRadius: "14px",
-            background: "#123b2a",
+            background: saving
+              ? "#6b8277"
+              : "#123b2a",
             color: "white",
             fontSize: "17px",
             fontWeight: "bold",
-            cursor: "pointer",
+            cursor: saving
+              ? "not-allowed"
+              : "pointer",
             marginBottom: "30px",
           }}
         >
-          Skicka check-in
+          {saving
+            ? "Sparar..."
+            : "Skicka check-in"}
         </button>
       </main>
     </div>

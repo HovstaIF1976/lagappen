@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { supabase } from "./supabase"
 
 type Exercise = {
   id: number
@@ -7,15 +8,13 @@ type Exercise = {
 }
 
 export type TrainingData = {
-  id?: number
+  id: string
   date: string
   time: string
   location: string
   focus: string
-  description: string
-  exercises: Exercise[]
-  notes: string
-  createdAt: string
+  description: string | null
+  notes: string | null
 }
 
 type EditTrainingProps = {
@@ -24,30 +23,131 @@ type EditTrainingProps = {
   onSaved: () => void
 }
 
+const parseTrainingContent = (
+  description: string | null
+): {
+  description: string
+  exercises: Exercise[]
+} => {
+  if (!description) {
+    return {
+      description: "",
+      exercises: [],
+    }
+  }
+
+  const marker = "ÖVNINGAR\n"
+  const markerIndex = description.indexOf(marker)
+
+  if (markerIndex === -1) {
+    return {
+      description,
+      exercises: [],
+    }
+  }
+
+  const beforeMarker = description
+    .slice(0, markerIndex)
+    .replace(/\n\n$/, "")
+    .trim()
+
+  const exerciseSection = description
+    .slice(markerIndex + marker.length)
+    .trim()
+
+  if (!exerciseSection) {
+    return {
+      description: beforeMarker,
+      exercises: [],
+    }
+  }
+
+  const blocks = exerciseSection.split(
+    /\n\n(?=\d+\.\s)/
+  )
+
+  const exercises = blocks
+    .map((block, index) => {
+      const lines = block.trim().split("\n")
+      const firstLine = lines[0] || ""
+
+      const name = firstLine.replace(
+        /^\d+\.\s*/,
+        ""
+      )
+
+      const exerciseDescription = lines
+        .slice(1)
+        .join("\n")
+        .trim()
+
+      return {
+        id: Date.now() + index,
+        name,
+        description: exerciseDescription,
+      }
+    })
+    .filter(
+      (exercise) =>
+        exercise.name ||
+        exercise.description
+    )
+
+  return {
+    description: beforeMarker,
+    exercises,
+  }
+}
+
 function EditTraining({
   training,
   onBack,
   onSaved,
 }: EditTrainingProps) {
-  const [date, setDate] = useState(training.date)
-  const [time, setTime] = useState(training.time)
-  const [location, setLocation] = useState(training.location)
-  const [focus, setFocus] = useState(training.focus)
-  const [description, setDescription] = useState(
+  const parsed = parseTrainingContent(
     training.description
   )
-  const [notes, setNotes] = useState(training.notes)
 
-  const [exercises, setExercises] = useState<Exercise[]>(
-    training.exercises?.length > 0
-      ? training.exercises
-      : [{ id: Date.now(), name: "", description: "" }]
+  const [date, setDate] = useState(training.date)
+  const [time, setTime] = useState(
+    training.time?.slice(0, 5) || ""
+  )
+  const [location, setLocation] = useState(
+    training.location
+  )
+  const [focus, setFocus] = useState(training.focus)
+  const [description, setDescription] = useState(
+    parsed.description
+  )
+  const [notes, setNotes] = useState(
+    training.notes ?? ""
+  )
+
+  const [exercises, setExercises] = useState<
+    Exercise[]
+  >(
+    parsed.exercises.length > 0
+      ? parsed.exercises
+      : [
+          {
+            id: Date.now(),
+            name: "",
+            description: "",
+          },
+        ]
   )
 
   const [saved, setSaved] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [errorMessage, setErrorMessage] =
+    useState("")
 
-  const normalizeTime = (value: string): string | null => {
-    const cleanedValue = value.trim().replace(".", ":")
+  const normalizeTime = (
+    value: string
+  ): string | null => {
+    const cleanedValue = value
+      .trim()
+      .replace(".", ":")
 
     let hours: number
     let minutes: number
@@ -55,9 +155,10 @@ function EditTraining({
     if (/^\d{1,2}$/.test(cleanedValue)) {
       hours = Number(cleanedValue)
       minutes = 0
-    } else if (/^\d{1,2}:\d{1,2}$/.test(cleanedValue)) {
+    } else if (
+      /^\d{1,2}:\d{1,2}$/.test(cleanedValue)
+    ) {
       const parts = cleanedValue.split(":")
-
       hours = Number(parts[0])
       minutes = Number(parts[1])
     } else {
@@ -73,25 +174,28 @@ function EditTraining({
       return null
     }
 
-    const formattedHours = String(hours).padStart(2, "0")
-    const formattedMinutes = String(minutes).padStart(2, "0")
-
-    return `${formattedHours}:${formattedMinutes}`
+    return `${String(hours).padStart(
+      2,
+      "0"
+    )}:${String(minutes).padStart(2, "0")}`
   }
 
   const addExercise = () => {
-    const newExercise: Exercise = {
-      id: Date.now(),
-      name: "",
-      description: "",
-    }
-
-    setExercises([...exercises, newExercise])
+    setExercises((current) => [
+      ...current,
+      {
+        id: Date.now(),
+        name: "",
+        description: "",
+      },
+    ])
   }
 
   const removeExercise = (id: number) => {
-    setExercises(
-      exercises.filter((exercise) => exercise.id !== id)
+    setExercises((current) =>
+      current.filter(
+        (exercise) => exercise.id !== id
+      )
     )
   }
 
@@ -100,8 +204,8 @@ function EditTraining({
     field: "name" | "description",
     value: string
   ) => {
-    setExercises(
-      exercises.map((exercise) =>
+    setExercises((current) =>
+      current.map((exercise) =>
         exercise.id === id
           ? { ...exercise, [field]: value }
           : exercise
@@ -109,9 +213,57 @@ function EditTraining({
     )
   }
 
-  const saveChanges = () => {
-    if (!date || !time || !focus) {
-      alert("Fyll i datum, tid och träningsfokus.")
+  const buildDescription = () => {
+    const completedExercises =
+      exercises.filter(
+        (exercise) =>
+          exercise.name.trim() ||
+          exercise.description.trim()
+      )
+
+    const sections: string[] = []
+
+    if (description.trim()) {
+      sections.push(description.trim())
+    }
+
+    if (completedExercises.length > 0) {
+      const exerciseText = completedExercises
+        .map((exercise, index) => {
+          const name =
+            exercise.name.trim() ||
+            `Övning ${index + 1}`
+
+          const exerciseDescription =
+            exercise.description.trim()
+
+          return exerciseDescription
+            ? `${index + 1}. ${name}\n${exerciseDescription}`
+            : `${index + 1}. ${name}`
+        })
+        .join("\n\n")
+
+      sections.push(`ÖVNINGAR\n${exerciseText}`)
+    }
+
+    return sections.join("\n\n")
+  }
+
+  const saveChanges = async () => {
+    if (saving) {
+      return
+    }
+
+    setErrorMessage("")
+
+    if (
+      !date ||
+      !time.trim() ||
+      !focus.trim()
+    ) {
+      alert(
+        "Fyll i datum, tid och träningsfokus."
+      )
       return
     }
 
@@ -124,81 +276,43 @@ function EditTraining({
       return
     }
 
-    const completedExercises = exercises.filter(
-      (exercise) =>
-        exercise.name.trim() !== "" ||
-        exercise.description.trim() !== ""
-    )
+    setSaving(true)
 
-    const updatedTraining: TrainingData = {
-      ...training,
-      date,
-      time: normalizedTime,
-      location,
-      focus,
-      description,
-      exercises: completedExercises,
-      notes,
-    }
+    const finalDescription = buildDescription()
 
-    const savedTrainings = localStorage.getItem(
-      "hovstaTrainings"
-    )
+    const { error } = await supabase
+      .from("trainings")
+      .update({
+        date,
+        time: normalizedTime,
+        location:
+          location.trim() || "Hovsta IP",
+        focus: focus.trim(),
+        description:
+          finalDescription || null,
+        notes: notes.trim() || null,
+      })
+      .eq("id", training.id)
 
-    if (!savedTrainings) {
-      alert("Kunde inte hitta träningslistan.")
+    if (error) {
+      console.error(
+        "Kunde inte uppdatera träning:",
+        error
+      )
+
+      setErrorMessage(
+        "Ändringarna kunde inte sparas."
+      )
+      setSaving(false)
       return
     }
 
-    try {
-      const trainings: TrainingData[] =
-        JSON.parse(savedTrainings)
+    setSaving(false)
+    setSaved(true)
 
-      const updatedTrainings = trainings.map(
-        (savedTraining) => {
-          if (
-            training.id !== undefined &&
-            savedTraining.id === training.id
-          ) {
-            return updatedTraining
-          }
-
-          if (
-            training.id === undefined &&
-            savedTraining.createdAt === training.createdAt
-          ) {
-            return updatedTraining
-          }
-
-          return savedTraining
-        }
-      )
-
-      updatedTrainings.sort((a, b) => {
-        const firstDate = new Date(
-          `${a.date}T${a.time || "00:00"}`
-        ).getTime()
-
-        const secondDate = new Date(
-          `${b.date}T${b.time || "00:00"}`
-        ).getTime()
-
-        return firstDate - secondDate
-      })
-
-      localStorage.setItem(
-        "hovstaTrainings",
-        JSON.stringify(updatedTrainings)
-      )
-
-      setSaved(true)
-
-      setTimeout(() => {
-        onSaved()
-      }, 1200)
-    } catch {
-      alert("Något gick fel när träningen skulle sparas.")
-    }
+    setTimeout(() => {
+      onSaved()
+    }, 1200)
   }
 
   const cardStyle: React.CSSProperties = {
@@ -206,7 +320,8 @@ function EditTraining({
     borderRadius: "18px",
     padding: "20px",
     marginBottom: "16px",
-    boxShadow: "0 3px 14px rgba(18,59,42,0.07)",
+    boxShadow:
+      "0 3px 14px rgba(18,59,42,0.07)",
     border: "1px solid #edf0ee",
   }
 
@@ -241,7 +356,6 @@ function EditTraining({
           alignItems: "center",
           justifyContent: "center",
           padding: "20px",
-          color: "#17202a",
         }}
       >
         <div
@@ -252,8 +366,8 @@ function EditTraining({
             borderRadius: "24px",
             overflow: "hidden",
             textAlign: "center",
-            boxShadow: "0 8px 28px rgba(18,59,42,0.12)",
-            border: "1px solid #edf0ee",
+            boxShadow:
+              "0 8px 28px rgba(18,59,42,0.12)",
           }}
         >
           <div
@@ -263,11 +377,7 @@ function EditTraining({
             }}
           />
 
-          <div
-            style={{
-              padding: "40px 24px",
-            }}
-          >
+          <div style={{ padding: "40px 24px" }}>
             <div
               style={{
                 width: "70px",
@@ -286,18 +396,6 @@ function EditTraining({
               ✓
             </div>
 
-            <p
-              style={{
-                margin: "0 0 7px",
-                color: "#f39200",
-                fontSize: "12px",
-                fontWeight: "bold",
-                letterSpacing: "1px",
-              }}
-            >
-              HOVSTA IF
-            </p>
-
             <h1
               style={{
                 margin: "0 0 10px",
@@ -312,7 +410,6 @@ function EditTraining({
               style={{
                 margin: 0,
                 color: "#5f6663",
-                lineHeight: "1.5",
               }}
             >
               Träningspasset har uppdaterats.
@@ -338,7 +435,8 @@ function EditTraining({
           color: "white",
           borderRadius: "0 0 28px 28px",
           overflow: "hidden",
-          boxShadow: "0 5px 18px rgba(18,59,42,0.18)",
+          boxShadow:
+            "0 5px 18px rgba(18,59,42,0.18)",
         }}
       >
         <div
@@ -360,12 +458,12 @@ function EditTraining({
             style={{
               background: "rgba(255,255,255,0.1)",
               color: "white",
-              border: "1px solid rgba(255,255,255,0.22)",
+              border:
+                "1px solid rgba(255,255,255,0.22)",
               borderRadius: "10px",
               padding: "9px 13px",
               cursor: "pointer",
               marginBottom: "22px",
-              fontSize: "14px",
               fontWeight: "bold",
             }}
           >
@@ -378,7 +476,6 @@ function EditTraining({
               color: "#f39200",
               fontSize: "13px",
               fontWeight: "bold",
-              letterSpacing: "1px",
             }}
           >
             HOVSTA IF • LEDARLÄGE
@@ -388,7 +485,6 @@ function EditTraining({
             style={{
               margin: "8px 0 6px",
               fontSize: "29px",
-              letterSpacing: "-0.5px",
             }}
           >
             Redigera träning ✏️
@@ -398,11 +494,10 @@ function EditTraining({
             style={{
               margin: 0,
               color: "#dbe6df",
-              fontSize: "15px",
-              lineHeight: "1.5",
             }}
           >
-            Uppdatera träningspasset och spara ändringarna.
+            Uppdatera träningspasset och spara
+            ändringarna.
           </p>
         </div>
       </header>
@@ -420,51 +515,37 @@ function EditTraining({
             borderTop: "4px solid #f39200",
           }}
         >
-          <p
-            style={{
-              margin: "0 0 6px",
-              color: "#6b7280",
-              fontSize: "12px",
-              fontWeight: "bold",
-              letterSpacing: "0.7px",
-              textTransform: "uppercase",
-            }}
-          >
-            Grundinformation
-          </p>
-
           <h2
             style={{
               margin: "0 0 20px",
               color: "#123b2a",
-              fontSize: "21px",
             }}
           >
             📅 När är träningen?
           </h2>
 
-          <label style={labelStyle}>
-            Datum
-          </label>
+          <label style={labelStyle}>Datum</label>
 
           <input
             type="date"
             value={date}
-            onChange={(e) => setDate(e.target.value)}
+            onChange={(event) =>
+              setDate(event.target.value)
+            }
             style={{
               ...inputStyle,
               marginBottom: "17px",
             }}
           />
 
-          <label style={labelStyle}>
-            Tid
-          </label>
+          <label style={labelStyle}>Tid</label>
 
           <input
             type="text"
             value={time}
-            onChange={(e) => setTime(e.target.value)}
+            onChange={(event) =>
+              setTime(event.target.value)
+            }
             placeholder="Exempel: 18:00"
             inputMode="decimal"
             style={{
@@ -478,44 +559,29 @@ function EditTraining({
               margin: "0 0 17px",
               color: "#6b7280",
               fontSize: "12px",
-              lineHeight: "1.4",
             }}
           >
-            Du kan skriva till exempel 18, 18.00 eller 18:00.
+            Du kan skriva till exempel 18, 18.00
+            eller 18:00.
           </p>
 
-          <label style={labelStyle}>
-            Plats
-          </label>
+          <label style={labelStyle}>Plats</label>
 
           <input
             type="text"
             value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            placeholder="Exempel: Hovsta IP"
+            onChange={(event) =>
+              setLocation(event.target.value)
+            }
             style={inputStyle}
           />
         </section>
 
         <section style={cardStyle}>
-          <p
-            style={{
-              margin: "0 0 6px",
-              color: "#6b7280",
-              fontSize: "12px",
-              fontWeight: "bold",
-              letterSpacing: "0.7px",
-              textTransform: "uppercase",
-            }}
-          >
-            Innehåll
-          </p>
-
           <h2
             style={{
               margin: "0 0 20px",
               color: "#123b2a",
-              fontSize: "21px",
             }}
           >
             🎯 Träningsfokus
@@ -528,8 +594,9 @@ function EditTraining({
           <input
             type="text"
             value={focus}
-            onChange={(e) => setFocus(e.target.value)}
-            placeholder="Exempel: Återerövring och kontring"
+            onChange={(event) =>
+              setFocus(event.target.value)
+            }
             style={{
               ...inputStyle,
               marginBottom: "17px",
@@ -542,12 +609,12 @@ function EditTraining({
 
           <textarea
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Beskriv syftet med träningspasset..."
+            onChange={(event) =>
+              setDescription(event.target.value)
+            }
             rows={4}
             style={{
               ...inputStyle,
-              fontSize: "15px",
               resize: "vertical",
               fontFamily: "Arial, sans-serif",
             }}
@@ -558,36 +625,19 @@ function EditTraining({
           <div
             style={{
               display: "flex",
-              alignItems: "flex-start",
               justifyContent: "space-between",
-              gap: "12px",
-              marginBottom: "4px",
+              alignItems: "center",
+              marginBottom: "14px",
             }}
           >
-            <div>
-              <p
-                style={{
-                  margin: "0 0 6px",
-                  color: "#6b7280",
-                  fontSize: "12px",
-                  fontWeight: "bold",
-                  letterSpacing: "0.7px",
-                  textTransform: "uppercase",
-                }}
-              >
-                Träningsplan
-              </p>
-
-              <h2
-                style={{
-                  margin: 0,
-                  color: "#123b2a",
-                  fontSize: "21px",
-                }}
-              >
-                🏃 Övningar
-              </h2>
-            </div>
+            <h2
+              style={{
+                margin: 0,
+                color: "#123b2a",
+              }}
+            >
+              🏃 Övningar
+            </h2>
 
             <span
               style={{
@@ -602,17 +652,6 @@ function EditTraining({
               {exercises.length} st
             </span>
           </div>
-
-          <p
-            style={{
-              color: "#5f6663",
-              lineHeight: "1.5",
-              margin: "12px 0 18px",
-              fontSize: "14px",
-            }}
-          >
-            Ändra, lägg till eller ta bort övningar.
-          </p>
 
           {exercises.map((exercise, index) => (
             <div
@@ -630,42 +669,12 @@ function EditTraining({
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
-                  gap: "10px",
                   marginBottom: "13px",
                 }}
               >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "9px",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "29px",
-                      height: "29px",
-                      borderRadius: "9px",
-                      background: "#123b2a",
-                      color: "white",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: "13px",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    {index + 1}
-                  </div>
-
-                  <strong
-                    style={{
-                      color: "#123b2a",
-                    }}
-                  >
-                    Övning {index + 1}
-                  </strong>
-                </div>
+                <strong style={{ color: "#123b2a" }}>
+                  Övning {index + 1}
+                </strong>
 
                 <button
                   onClick={() =>
@@ -676,7 +685,6 @@ function EditTraining({
                     background: "transparent",
                     color: "#9b2c2c",
                     cursor: "pointer",
-                    fontSize: "13px",
                     fontWeight: "bold",
                   }}
                 >
@@ -687,35 +695,33 @@ function EditTraining({
               <input
                 type="text"
                 value={exercise.name}
-                onChange={(e) =>
+                onChange={(event) =>
                   updateExercise(
                     exercise.id,
                     "name",
-                    e.target.value
+                    event.target.value
                   )
                 }
                 placeholder="Namn på övningen"
                 style={{
                   ...inputStyle,
-                  fontSize: "15px",
                   marginBottom: "10px",
                 }}
               />
 
               <textarea
                 value={exercise.description}
-                onChange={(e) =>
+                onChange={(event) =>
                   updateExercise(
                     exercise.id,
                     "description",
-                    e.target.value
+                    event.target.value
                   )
                 }
                 placeholder="Beskriv övningen..."
                 rows={3}
                 style={{
                   ...inputStyle,
-                  fontSize: "15px",
                   resize: "vertical",
                   fontFamily: "Arial, sans-serif",
                 }}
@@ -742,24 +748,10 @@ function EditTraining({
         </section>
 
         <section style={cardStyle}>
-          <p
-            style={{
-              margin: "0 0 6px",
-              color: "#6b7280",
-              fontSize: "12px",
-              fontWeight: "bold",
-              letterSpacing: "0.7px",
-              textTransform: "uppercase",
-            }}
-          >
-            Information till spelarna
-          </p>
-
           <h2
             style={{
               margin: "0 0 16px",
               color: "#123b2a",
-              fontSize: "21px",
             }}
           >
             📝 Övrigt
@@ -767,34 +759,55 @@ function EditTraining({
 
           <textarea
             value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Exempel: Samling 17:45, ta med löparskor..."
+            onChange={(event) =>
+              setNotes(event.target.value)
+            }
             rows={4}
             style={{
               ...inputStyle,
-              fontSize: "15px",
               resize: "vertical",
               fontFamily: "Arial, sans-serif",
             }}
           />
         </section>
 
+        {errorMessage && (
+          <div
+            style={{
+              background: "#fff1f0",
+              border: "1px solid #f1c0bc",
+              color: "#8a2820",
+              borderRadius: "12px",
+              padding: "13px",
+              marginBottom: "16px",
+            }}
+          >
+            {errorMessage}
+          </div>
+        )}
+
         <button
-          onClick={saveChanges}
+          onClick={() => void saveChanges()}
+          disabled={saving}
           style={{
             width: "100%",
             padding: "16px",
             border: "none",
             borderRadius: "14px",
-            background: "#123b2a",
+            background: saving
+              ? "#6b8277"
+              : "#123b2a",
             color: "white",
             fontSize: "17px",
             fontWeight: "bold",
-            cursor: "pointer",
-            boxShadow: "0 4px 12px rgba(18,59,42,0.15)",
+            cursor: saving
+              ? "not-allowed"
+              : "pointer",
           }}
         >
-          Spara ändringar
+          {saving
+            ? "Sparar..."
+            : "Spara ändringar"}
         </button>
 
         <p
@@ -803,7 +816,6 @@ function EditTraining({
             textAlign: "center",
             color: "#9aa29d",
             fontSize: "11px",
-            letterSpacing: "0.5px",
           }}
         >
           HOVSTA IF • LEDARLÄGE

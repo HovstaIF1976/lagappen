@@ -1,66 +1,93 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { supabase } from "./supabase"
 
 type TrainingProps = {
   onBack: () => void
 }
 
-type Exercise = {
-  id: number
-  name: string
-  description: string
-}
-
 type TrainingData = {
-  id?: number
+  id: string
   date: string
   time: string
   location: string
   focus: string
-  description: string
-  exercises: Exercise[]
-  notes: string
-  createdAt: string
+  description: string | null
+  notes: string | null
+  created_at: string
 }
 
 function Training({ onBack }: TrainingProps) {
+  const [trainings, setTrainings] = useState<TrainingData[]>([])
   const [selectedTraining, setSelectedTraining] =
     useState<TrainingData | null>(null)
 
-  const getTrainings = (): TrainingData[] => {
-    const savedTrainings =
-      localStorage.getItem("hovstaTrainings")
+  const [loading, setLoading] = useState(true)
+  const [errorMessage, setErrorMessage] = useState("")
 
-    if (!savedTrainings) {
-      return []
-    }
+  useEffect(() => {
+    let cancelled = false
 
-    try {
-      const parsedTrainings =
-        JSON.parse(savedTrainings)
+    const loadTrainings = async () => {
+      setLoading(true)
+      setErrorMessage("")
 
-      if (Array.isArray(parsedTrainings)) {
-        return parsedTrainings
+      const { data, error } = await supabase
+        .from("trainings")
+        .select(
+          "id, date, time, location, focus, description, notes, created_at"
+        )
+        .order("date", { ascending: true })
+        .order("time", { ascending: true })
+
+      if (cancelled) {
+        return
       }
 
-      return []
-    } catch {
-      return []
+      if (error) {
+        console.error(error)
+        setErrorMessage("Kunde inte hämta träningarna.")
+        setLoading(false)
+        return
+      }
+
+      setTrainings((data as TrainingData[] | null) ?? [])
+      setLoading(false)
     }
+
+    void loadTrainings()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const getTrainingDateTime = (
+    training: TrainingData
+  ) => {
+    const time = training.time?.slice(0, 5) || "00:00"
+
+    return new Date(
+      `${training.date}T${time}:00`
+    ).getTime()
   }
 
-  const trainings = getTrainings()
+  const sortedTrainings = [...trainings].sort(
+    (a, b) =>
+      getTrainingDateTime(a) -
+      getTrainingDateTime(b)
+  )
 
-  const sortedTrainings = [...trainings].sort((a, b) => {
-    const firstDate = new Date(
-      `${a.date}T${a.time || "00:00"}`
-    ).getTime()
+  const upcomingTrainings = sortedTrainings.filter(
+    (training) =>
+      getTrainingDateTime(training) >= Date.now()
+  )
 
-    const secondDate = new Date(
-      `${b.date}T${b.time || "00:00"}`
-    ).getTime()
-
-    return firstDate - secondDate
-  })
+  const previousTrainings = sortedTrainings
+    .filter(
+      (training) =>
+        getTrainingDateTime(training) < Date.now()
+    )
+    .reverse()
 
   const formatDate = (date: string) => {
     if (!date) {
@@ -76,16 +103,28 @@ function Training({ onBack }: TrainingProps) {
     }).format(dateObject)
   }
 
+  const formatTime = (time: string) => {
+    return time?.slice(0, 5) || "Tid saknas"
+  }
+
+  const pageStyle: React.CSSProperties = {
+    minHeight: "100vh",
+    background: "#f4f6f8",
+    fontFamily: "Arial, sans-serif",
+    color: "#17202a",
+  }
+
+  const cardStyle: React.CSSProperties = {
+    background: "white",
+    borderRadius: "18px",
+    padding: "20px",
+    marginBottom: "14px",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+  }
+
   if (selectedTraining) {
     return (
-      <div
-        style={{
-          minHeight: "100vh",
-          background: "#f4f6f8",
-          fontFamily: "Arial, sans-serif",
-          color: "#17202a",
-        }}
-      >
+      <div style={pageStyle}>
         <header
           style={{
             background: "#123b2a",
@@ -99,7 +138,8 @@ function Training({ onBack }: TrainingProps) {
             style={{
               background: "rgba(255,255,255,0.15)",
               color: "white",
-              border: "1px solid rgba(255,255,255,0.3)",
+              border:
+                "1px solid rgba(255,255,255,0.3)",
               borderRadius: "10px",
               padding: "9px 13px",
               cursor: "pointer",
@@ -123,6 +163,7 @@ function Training({ onBack }: TrainingProps) {
             style={{
               margin: "8px 0 6px",
               fontSize: "28px",
+              color: "white",
             }}
           >
             {selectedTraining.focus}
@@ -146,73 +187,96 @@ function Training({ onBack }: TrainingProps) {
             padding: "20px",
           }}
         >
-          <section
-            style={{
-              background: "white",
-              borderRadius: "18px",
-              padding: "20px",
-              marginBottom: "16px",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-            }}
-          >
+          <section style={cardStyle}>
             <h2
               style={{
-                marginTop: 0,
+                margin: "0 0 16px",
+                color: "#123b2a",
               }}
             >
-              📅 Träningsinformation
+              Träningsinformation
             </h2>
 
-            <p
+            <div
               style={{
-                margin: "10px 0",
-                textTransform: "capitalize",
+                display: "grid",
+                gap: "14px",
               }}
             >
-              <strong>Datum:</strong>{" "}
-              {formatDate(selectedTraining.date)}
-            </p>
+              <div>
+                <div
+                  style={{
+                    color: "#777",
+                    fontSize: "12px",
+                    fontWeight: "bold",
+                    textTransform: "uppercase",
+                    marginBottom: "4px",
+                  }}
+                >
+                  Datum
+                </div>
 
-            <p
-              style={{
-                margin: "10px 0",
-              }}
-            >
-              <strong>Tid:</strong>{" "}
-              {selectedTraining.time}
-            </p>
+                <div
+                  style={{
+                    textTransform: "capitalize",
+                  }}
+                >
+                  📅 {formatDate(selectedTraining.date)}
+                </div>
+              </div>
 
-            <p
-              style={{
-                margin: "10px 0",
-              }}
-            >
-              <strong>Plats:</strong>{" "}
-              {selectedTraining.location}
-            </p>
+              <div>
+                <div
+                  style={{
+                    color: "#777",
+                    fontSize: "12px",
+                    fontWeight: "bold",
+                    textTransform: "uppercase",
+                    marginBottom: "4px",
+                  }}
+                >
+                  Tid
+                </div>
+
+                <div>
+                  🕒 {formatTime(selectedTraining.time)}
+                </div>
+              </div>
+
+              <div>
+                <div
+                  style={{
+                    color: "#777",
+                    fontSize: "12px",
+                    fontWeight: "bold",
+                    textTransform: "uppercase",
+                    marginBottom: "4px",
+                  }}
+                >
+                  Plats
+                </div>
+
+                <div>
+                  📍 {selectedTraining.location}
+                </div>
+              </div>
+            </div>
           </section>
 
-          {selectedTraining.description.trim() !== "" && (
-            <section
-              style={{
-                background: "white",
-                borderRadius: "18px",
-                padding: "20px",
-                marginBottom: "16px",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-              }}
-            >
+          {selectedTraining.description && (
+            <section style={cardStyle}>
               <h2
                 style={{
-                  marginTop: 0,
+                  margin: "0 0 10px",
+                  color: "#123b2a",
                 }}
               >
-                🎯 Träningsfokus
+                Om träningen
               </h2>
 
               <p
                 style={{
-                  marginBottom: 0,
+                  margin: 0,
                   color: "#555",
                   lineHeight: "1.6",
                   whiteSpace: "pre-wrap",
@@ -223,113 +287,27 @@ function Training({ onBack }: TrainingProps) {
             </section>
           )}
 
-          <section
-            style={{
-              background: "white",
-              borderRadius: "18px",
-              padding: "20px",
-              marginBottom: "16px",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-            }}
-          >
-            <h2
-              style={{
-                marginTop: 0,
-              }}
-            >
-              ⚽ Övningar
-            </h2>
-
-            {selectedTraining.exercises &&
-            selectedTraining.exercises.length > 0 ? (
-              selectedTraining.exercises.map(
-                (exercise, index) => (
-                  <div
-                    key={exercise.id}
-                    style={{
-                      padding: "16px",
-                      background: "#f7f8f8",
-                      border: "1px solid #e5e7eb",
-                      borderRadius: "14px",
-                      marginBottom:
-                        index ===
-                        selectedTraining.exercises.length - 1
-                          ? "0"
-                          : "12px",
-                    }}
-                  >
-                    <p
-                      style={{
-                        margin: "0 0 5px",
-                        color: "#6b7280",
-                        fontSize: "12px",
-                        fontWeight: "bold",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Övning {index + 1}
-                    </p>
-
-                    {exercise.name.trim() !== "" && (
-                      <h3
-                        style={{
-                          margin: "0 0 8px",
-                          color: "#123b2a",
-                        }}
-                      >
-                        {exercise.name}
-                      </h3>
-                    )}
-
-                    {exercise.description.trim() !== "" && (
-                      <p
-                        style={{
-                          margin: 0,
-                          color: "#555",
-                          lineHeight: "1.6",
-                          whiteSpace: "pre-wrap",
-                        }}
-                      >
-                        {exercise.description}
-                      </p>
-                    )}
-                  </div>
-                )
-              )
-            ) : (
-              <p
-                style={{
-                  marginBottom: 0,
-                  color: "#666",
-                }}
-              >
-                Inga övningar har lagts till ännu.
-              </p>
-            )}
-          </section>
-
-          {selectedTraining.notes.trim() !== "" && (
+          {selectedTraining.notes && (
             <section
               style={{
-                background: "#fff8e7",
-                border: "1px solid #ead9a5",
-                borderRadius: "18px",
-                padding: "20px",
-                marginBottom: "30px",
+                ...cardStyle,
+                background: "#fff8e6",
+                border: "1px solid #f1d995",
               }}
             >
               <h2
                 style={{
-                  marginTop: 0,
+                  margin: "0 0 10px",
+                  color: "#6f5714",
                 }}
               >
-                💡 Att tänka på
+                Viktigt inför träningen
               </h2>
 
               <p
                 style={{
-                  marginBottom: 0,
-                  color: "#5f5743",
+                  margin: 0,
+                  color: "#6f6030",
                   lineHeight: "1.6",
                   whiteSpace: "pre-wrap",
                 }}
@@ -338,20 +316,30 @@ function Training({ onBack }: TrainingProps) {
               </p>
             </section>
           )}
+
+          <button
+            onClick={() => setSelectedTraining(null)}
+            style={{
+              width: "100%",
+              padding: "14px",
+              borderRadius: "14px",
+              border: "1px solid #123b2a",
+              background: "white",
+              color: "#123b2a",
+              fontWeight: "bold",
+              cursor: "pointer",
+              marginBottom: "30px",
+            }}
+          >
+            ← Till alla träningar
+          </button>
         </main>
       </div>
     )
   }
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#f4f6f8",
-        fontFamily: "Arial, sans-serif",
-        color: "#17202a",
-      }}
-    >
+    <div style={pageStyle}>
       <header
         style={{
           background: "#123b2a",
@@ -365,7 +353,8 @@ function Training({ onBack }: TrainingProps) {
           style={{
             background: "rgba(255,255,255,0.15)",
             color: "white",
-            border: "1px solid rgba(255,255,255,0.3)",
+            border:
+              "1px solid rgba(255,255,255,0.3)",
             borderRadius: "10px",
             padding: "9px 13px",
             cursor: "pointer",
@@ -389,6 +378,7 @@ function Training({ onBack }: TrainingProps) {
           style={{
             margin: "8px 0 4px",
             fontSize: "28px",
+            color: "white",
           }}
         >
           Träningar ⚽
@@ -400,7 +390,7 @@ function Training({ onBack }: TrainingProps) {
             opacity: 0.9,
           }}
         >
-          Se lagets träningsplanering
+          Se kommande och tidigare träningar
         </p>
       </header>
 
@@ -411,127 +401,246 @@ function Training({ onBack }: TrainingProps) {
           padding: "20px",
         }}
       >
-        {sortedTrainings.length > 0 ? (
-          sortedTrainings.map((training) => (
-            <button
-              key={
-                training.id ??
-                `${training.date}-${training.time}-${training.createdAt}`
-              }
-              onClick={() => setSelectedTraining(training)}
-              style={{
-                width: "100%",
-                display: "block",
-                textAlign: "left",
-                background: "white",
-                border: "none",
-                borderRadius: "18px",
-                padding: "20px",
-                marginBottom: "14px",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-                cursor: "pointer",
-                color: "#17202a",
-              }}
-            >
-              <p
-                style={{
-                  margin: 0,
-                  color: "#6b7280",
-                  fontSize: "13px",
-                  textTransform: "capitalize",
-                }}
-              >
-                {formatDate(training.date)} • {training.time}
-              </p>
-
-              <h2
-                style={{
-                  margin: "8px 0",
-                  color: "#123b2a",
-                  fontSize: "21px",
-                }}
-              >
-                {training.focus}
-              </h2>
-
-              <p
-                style={{
-                  margin: "0 0 14px",
-                  color: "#555",
-                }}
-              >
-                📍 {training.location}
-              </p>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  paddingTop: "12px",
-                  borderTop: "1px solid #eee",
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: "13px",
-                    color: "#6b7280",
-                  }}
-                >
-                  {training.exercises?.length ?? 0} övningar
-                </span>
-
-                <span
-                  style={{
-                    color: "#123b2a",
-                    fontWeight: "bold",
-                  }}
-                >
-                  Öppna →
-                </span>
-              </div>
-            </button>
-          ))
-        ) : (
+        {loading && (
           <section
             style={{
-              background: "white",
-              borderRadius: "18px",
-              padding: "30px 20px",
+              ...cardStyle,
               textAlign: "center",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+              padding: "35px 20px",
             }}
           >
             <div
               style={{
-                fontSize: "42px",
+                fontSize: "36px",
                 marginBottom: "12px",
               }}
             >
               ⚽
             </div>
 
+            <strong style={{ color: "#123b2a" }}>
+              Hämtar träningar...
+            </strong>
+          </section>
+        )}
+
+        {!loading && errorMessage && (
+          <section
+            style={{
+              ...cardStyle,
+              background: "#fff1f0",
+              border: "1px solid #f1c0bc",
+            }}
+          >
             <h2
               style={{
                 margin: "0 0 8px",
-                color: "#123b2a",
+                color: "#8a2820",
               }}
             >
-              Inga träningar ännu
+              Något gick fel
             </h2>
 
             <p
               style={{
                 margin: 0,
-                color: "#666",
-                lineHeight: "1.5",
+                color: "#8a2820",
               }}
             >
-              När ledarna publicerar träningspass kommer de att
-              visas här.
+              {errorMessage}
             </p>
           </section>
         )}
+
+        {!loading &&
+          !errorMessage &&
+          trainings.length === 0 && (
+            <section
+              style={{
+                ...cardStyle,
+                textAlign: "center",
+                padding: "35px 20px",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "42px",
+                  marginBottom: "12px",
+                }}
+              >
+                📅
+              </div>
+
+              <h2
+                style={{
+                  color: "#123b2a",
+                  margin: "0 0 8px",
+                }}
+              >
+                Inga träningar ännu
+              </h2>
+
+              <p
+                style={{
+                  margin: 0,
+                  color: "#666",
+                  lineHeight: "1.5",
+                }}
+              >
+                När ledarna lägger in träningar
+                visas de här.
+              </p>
+            </section>
+          )}
+
+        {!loading &&
+          !errorMessage &&
+          upcomingTrainings.length > 0 && (
+            <>
+              <h2
+                style={{
+                  color: "#123b2a",
+                  fontSize: "20px",
+                  margin: "4px 0 12px",
+                }}
+              >
+                Kommande träningar
+              </h2>
+
+              {upcomingTrainings.map(
+                (training, index) => (
+                  <button
+                    key={training.id}
+                    onClick={() =>
+                      setSelectedTraining(training)
+                    }
+                    style={{
+                      ...cardStyle,
+                      width: "100%",
+                      border:
+                        index === 0
+                          ? "2px solid #123b2a"
+                          : "none",
+                      textAlign: "left",
+                      cursor: "pointer",
+                      fontFamily: "Arial, sans-serif",
+                    }}
+                  >
+                    {index === 0 && (
+                      <div
+                        style={{
+                          display: "inline-block",
+                          background: "#e7f1eb",
+                          color: "#123b2a",
+                          borderRadius: "999px",
+                          padding: "5px 9px",
+                          fontSize: "11px",
+                          fontWeight: "bold",
+                          marginBottom: "10px",
+                        }}
+                      >
+                        NÄSTA TRÄNING
+                      </div>
+                    )}
+
+                    <h3
+                      style={{
+                        margin: "0 0 8px",
+                        color: "#123b2a",
+                        fontSize: "19px",
+                      }}
+                    >
+                      {training.focus}
+                    </h3>
+
+                    <p
+                      style={{
+                        margin: "0 0 6px",
+                        color: "#555",
+                        textTransform: "capitalize",
+                      }}
+                    >
+                      📅 {formatDate(training.date)}
+                    </p>
+
+                    <p
+                      style={{
+                        margin: 0,
+                        color: "#666",
+                      }}
+                    >
+                      🕒 {formatTime(training.time)} • 📍{" "}
+                      {training.location}
+                    </p>
+                  </button>
+                )
+              )}
+            </>
+          )}
+
+        {!loading &&
+          !errorMessage &&
+          previousTrainings.length > 0 && (
+            <>
+              <h2
+                style={{
+                  color: "#123b2a",
+                  fontSize: "20px",
+                  margin: "28px 0 12px",
+                }}
+              >
+                Tidigare träningar
+              </h2>
+
+              {previousTrainings.map((training) => (
+                <button
+                  key={training.id}
+                  onClick={() =>
+                    setSelectedTraining(training)
+                  }
+                  style={{
+                    ...cardStyle,
+                    width: "100%",
+                    border: "none",
+                    textAlign: "left",
+                    cursor: "pointer",
+                    opacity: 0.82,
+                    fontFamily: "Arial, sans-serif",
+                  }}
+                >
+                  <h3
+                    style={{
+                      margin: "0 0 8px",
+                      color: "#123b2a",
+                      fontSize: "18px",
+                    }}
+                  >
+                    {training.focus}
+                  </h3>
+
+                  <p
+                    style={{
+                      margin: "0 0 6px",
+                      color: "#555",
+                      textTransform: "capitalize",
+                    }}
+                  >
+                    📅 {formatDate(training.date)}
+                  </p>
+
+                  <p
+                    style={{
+                      margin: 0,
+                      color: "#666",
+                    }}
+                  >
+                    🕒 {formatTime(training.time)} • 📍{" "}
+                    {training.location}
+                  </p>
+                </button>
+              ))}
+            </>
+          )}
       </main>
     </div>
   )

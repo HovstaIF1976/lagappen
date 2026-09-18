@@ -1,19 +1,20 @@
-import { useState } from "react"
+import { useEffect, useState, type CSSProperties } from "react"
+import { supabase } from "./supabase"
 
 type PlayersProps = {
   onBack: () => void
 }
 
 type Player = {
-  id: number
+  id: string
   name: string
   number: number
   position: string
 }
 
 type CheckInData = {
-  id: number
-  playerName: string
+  id: string
+  playerId: string
   mood: number | null
   moodReason: string
   energy: number | null
@@ -23,8 +24,8 @@ type CheckInData = {
 }
 
 type CheckOutData = {
-  id: number
-  playerName: string
+  id: string
+  playerId: string
   feeling: number
   effort: number
   body: number
@@ -41,79 +42,163 @@ function Players({ onBack }: PlayersProps) {
   const [profileTab, setProfileTab] =
     useState<ProfileTab>("checkin")
 
-  const players: Player[] = [
-    {
-      id: 1,
-      name: "Testspelare",
-      number: 8,
-      position: "Mittfältare",
-    },
-    {
-      id: 2,
-      name: "Erik Test",
-      number: 1,
-      position: "Målvakt",
-    },
-    {
-      id: 3,
-      name: "Anton Test",
-      number: 4,
-      position: "Försvarare",
-    },
-    {
-      id: 4,
-      name: "William Test",
-      number: 10,
-      position: "Mittfältare",
-    },
-    {
-      id: 5,
-      name: "Lucas Test",
-      number: 9,
-      position: "Anfallare",
-    },
-  ]
+  const [players, setPlayers] = useState<Player[]>([])
+  const [checkIns, setCheckIns] = useState<CheckInData[]>([])
+  const [checkOuts, setCheckOuts] = useState<CheckOutData[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
 
-  const getCheckIns = (): CheckInData[] => {
-    const saved = localStorage.getItem("hovstaCheckIns")
+  useEffect(() => {
+    const loadPlayers = async () => {
+      setLoading(true)
+      setError("")
 
-    if (!saved) {
-      return []
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser()
+
+      if (userError || !user) {
+        setError("Du behöver vara inloggad för att se spelarna.")
+        setLoading(false)
+        return
+      }
+
+      const { data: ownProfile, error: profileError } =
+        await supabase
+          .from("profiles")
+          .select("role, team_id")
+          .eq("id", user.id)
+          .single()
+
+      if (profileError || !ownProfile) {
+        setError("Kunde inte läsa din ledarprofil.")
+        setLoading(false)
+        return
+      }
+
+      if (
+        ownProfile.role !== "coach" &&
+        ownProfile.role !== "admin"
+      ) {
+        setError("Du har inte behörighet att se spelaröversikten.")
+        setLoading(false)
+        return
+      }
+
+      if (!ownProfile.team_id) {
+        setError("Din ledarprofil är inte kopplad till något lag ännu.")
+        setLoading(false)
+        return
+      }
+
+      const [
+        playersResult,
+        checkInsResult,
+        checkOutsResult,
+      ] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select("id, full_name, shirt_number, position")
+          .eq("team_id", ownProfile.team_id)
+          .eq("role", "player")
+          .order("shirt_number", {
+            ascending: true,
+            nullsFirst: false,
+          }),
+        supabase
+          .from("check_ins")
+          .select(
+            "id, player_id, mood, mood_reason, energy, pain, other, created_at"
+          )
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("check_outs")
+          .select(
+            "id, player_id, feeling, effort, body, comment, created_at"
+          )
+          .order("created_at", { ascending: false }),
+      ])
+
+      if (playersResult.error) {
+        setError(
+          `Kunde inte hämta spelartruppen: ${playersResult.error.message}`
+        )
+        setLoading(false)
+        return
+      }
+
+      if (checkInsResult.error) {
+        setError(
+          `Kunde inte hämta check-ins: ${checkInsResult.error.message}`
+        )
+        setLoading(false)
+        return
+      }
+
+      if (checkOutsResult.error) {
+        setError(
+          `Kunde inte hämta check-outs: ${checkOutsResult.error.message}`
+        )
+        setLoading(false)
+        return
+      }
+
+      const loadedPlayers: Player[] = (
+        playersResult.data ?? []
+      ).map((profile) => ({
+        id: profile.id,
+        name: profile.full_name,
+        number: profile.shirt_number ?? 0,
+        position: profile.position?.trim() || "Ej angiven",
+      }))
+
+      const playerIds = new Set(
+        loadedPlayers.map((player) => player.id)
+      )
+
+      const loadedCheckIns: CheckInData[] = (
+        checkInsResult.data ?? []
+      )
+        .filter((item) => playerIds.has(item.player_id))
+        .map((item) => ({
+          id: item.id,
+          playerId: item.player_id,
+          mood: item.mood,
+          moodReason: item.mood_reason ?? "",
+          energy: item.energy,
+          pain: item.pain ?? "",
+          other: item.other ?? "",
+          date: item.created_at,
+        }))
+
+      const loadedCheckOuts: CheckOutData[] = (
+        checkOutsResult.data ?? []
+      )
+        .filter((item) => playerIds.has(item.player_id))
+        .map((item) => ({
+          id: item.id,
+          playerId: item.player_id,
+          feeling: item.feeling,
+          effort: item.effort,
+          body: item.body,
+          comment: item.comment ?? "",
+          date: item.created_at,
+        }))
+
+      setPlayers(loadedPlayers)
+      setCheckIns(loadedCheckIns)
+      setCheckOuts(loadedCheckOuts)
+      setLoading(false)
     }
 
-    try {
-      const parsed = JSON.parse(saved)
-
-      return Array.isArray(parsed) ? parsed : []
-    } catch {
-      return []
-    }
-  }
-
-  const getCheckOuts = (): CheckOutData[] => {
-    const saved = localStorage.getItem("hovstaCheckOuts")
-
-    if (!saved) {
-      return []
-    }
-
-    try {
-      const parsed = JSON.parse(saved)
-
-      return Array.isArray(parsed) ? parsed : []
-    } catch {
-      return []
-    }
-  }
-
-  const checkIns = getCheckIns()
-  const checkOuts = getCheckOuts()
+    void loadPlayers()
+  }, [])
 
   const getPlayerCheckIns = (player: Player) => {
     return checkIns
       .filter(
-        (checkIn) =>
-          checkIn.playerName === player.name
+        (checkIn) => checkIn.playerId === player.id
       )
       .sort(
         (a, b) =>
@@ -125,8 +210,7 @@ function Players({ onBack }: PlayersProps) {
   const getPlayerCheckOuts = (player: Player) => {
     return checkOuts
       .filter(
-        (checkOut) =>
-          checkOut.playerName === player.name
+        (checkOut) => checkOut.playerId === player.id
       )
       .sort(
         (a, b) =>
@@ -264,20 +348,20 @@ function Players({ onBack }: PlayersProps) {
     }).format(dateObject)
   }
 
-  const pageStyle: React.CSSProperties = {
+  const pageStyle: CSSProperties = {
     minHeight: "100vh",
     background: "#f4f6f5",
     fontFamily: "Arial, sans-serif",
     color: "#17202a",
   }
 
-  const mainStyle: React.CSSProperties = {
+  const mainStyle: CSSProperties = {
     maxWidth: "600px",
     margin: "0 auto",
     padding: "20px",
   }
 
-  const cardStyle: React.CSSProperties = {
+  const cardStyle: CSSProperties = {
     background: "white",
     borderRadius: "18px",
     padding: "20px",
@@ -379,6 +463,60 @@ function Players({ onBack }: PlayersProps) {
           </p>
         </div>
       </header>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div style={pageStyle}>
+        <Header
+          eyebrow="Hovsta IF • Ledarläge"
+          title="Spelare 👥"
+          subtitle="Hämtar truppen..."
+          onHeaderBack={onBack}
+        />
+        <main style={mainStyle}>
+          <section style={cardStyle}>
+            <p style={{ margin: 0, color: "#6b7280" }}>
+              Hämtar spelare och svar...
+            </p>
+          </section>
+        </main>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div style={pageStyle}>
+        <Header
+          eyebrow="Hovsta IF • Ledarläge"
+          title="Spelare 👥"
+          subtitle="Kunde inte läsa spelaröversikten."
+          onHeaderBack={onBack}
+        />
+        <main style={mainStyle}>
+          <section
+            style={{
+              ...cardStyle,
+              borderTop: "4px solid #9b2c2c",
+            }}
+          >
+            <strong
+              style={{
+                display: "block",
+                color: "#9b2c2c",
+                marginBottom: "8px",
+              }}
+            >
+              Något gick fel
+            </strong>
+            <p style={{ margin: 0, color: "#666" }}>
+              {error}
+            </p>
+          </section>
+        </main>
+      </div>
     )
   }
 
@@ -1434,7 +1572,7 @@ function Players({ onBack }: PlayersProps) {
                 textAlign: "center",
               }}
             >
-              I den färdiga appen visas individuella
+              Individuella
               svar endast så länge de finns kvar inom
               lagets gallringsperiod.
             </p>
@@ -1543,7 +1681,7 @@ function Players({ onBack }: PlayersProps) {
                 fontWeight: "bold",
               }}
             >
-              Testtrupp
+              Aktuell trupp
             </span>
           </div>
 
