@@ -1,8 +1,11 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import CreateTraining from "./CreateTraining"
 import ManageTrainings from "./ManageTrainings"
 import CoachCheckIns from "./CoachCheckIns"
 import Players from "./Players"
+import ManageTeams from "./ManageTeams"
+import ManageLeaders from "./ManageLeaders"
+import { supabase } from "./supabase"
 import hovstaLogo from "./assets/300374317_580630103589064_157634585059629613_n.jpg"
 
 type CoachProps = {
@@ -16,7 +19,53 @@ function Coach({ onBack }: CoachProps) {
     | "manageTrainings"
     | "checkIns"
     | "players"
+    | "teams"
+    | "leaders"
   >("home")
+
+  const [userRole, setUserRole] = useState<
+    "coach" | "admin" | null
+  >(null)
+
+  useEffect(() => {
+    const loadRole = async () => {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser()
+
+      if (userError || !user) {
+        console.error(
+          "Kunde inte hitta inloggad användare:",
+          userError
+        )
+        return
+      }
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single()
+
+      if (error) {
+        console.error(
+          "Kunde inte hämta ledarroll:",
+          error
+        )
+        return
+      }
+
+      if (
+        data?.role === "admin" ||
+        data?.role === "coach"
+      ) {
+        setUserRole(data.role)
+      }
+    }
+
+    void loadRole()
+  }, [])
 
   if (page === "createTraining") {
     return (
@@ -45,6 +94,28 @@ function Coach({ onBack }: CoachProps) {
   if (page === "players") {
     return (
       <Players
+        onBack={() => setPage("home")}
+      />
+    )
+  }
+
+  if (
+    page === "teams" &&
+    userRole === "admin"
+  ) {
+    return (
+      <ManageTeams
+        onBack={() => setPage("home")}
+      />
+    )
+  }
+
+  if (
+    page === "leaders" &&
+    userRole === "admin"
+  ) {
+    return (
+      <ManageLeaders
         onBack={() => setPage("home")}
       />
     )
@@ -585,6 +656,189 @@ function Coach({ onBack }: CoachProps) {
             Visa spelare →
           </button>
         </section>
+
+        {userRole === "admin" && (
+          <>
+            <div
+              style={{
+                margin: "8px 0 14px",
+              }}
+            >
+              <p
+                style={{
+                  margin: "0 0 5px",
+                  color: "#f39200",
+                  fontSize: "12px",
+                  fontWeight: "bold",
+                  letterSpacing: "0.8px",
+                  textTransform: "uppercase",
+                }}
+              >
+                Administration
+              </p>
+
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: "22px",
+                  color: "#123b2a",
+                }}
+              >
+                Hovsta IF
+              </h2>
+            </div>
+
+            <section
+              style={{
+                ...cardStyle,
+                borderTop: "4px solid #f39200",
+                marginBottom: "28px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  justifyContent: "space-between",
+                  gap: "15px",
+                }}
+              >
+                <div>
+                  <p
+                    style={{
+                      margin: 0,
+                      fontSize: "12px",
+                      color: "#6b7280",
+                      fontWeight: "bold",
+                      letterSpacing: "0.7px",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    Föreningen
+                  </p>
+
+                  <h2
+                    style={{
+                      margin: "8px 0",
+                      color: "#123b2a",
+                    }}
+                  >
+                    Hantera lag
+                  </h2>
+                </div>
+
+                <div
+                  style={{
+                    width: "44px",
+                    height: "44px",
+                    minWidth: "44px",
+                    borderRadius: "13px",
+                    background: "#fff4e5",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "21px",
+                  }}
+                >
+                  🏟️
+                </div>
+              </div>
+
+              <p
+                style={{
+                  color: "#5f6663",
+                  lineHeight: "1.5",
+                  marginBottom: "18px",
+                }}
+              >
+                Se föreningens lag och lägg till
+                nya lag direkt från adminläget.
+              </p>
+
+              <button
+                onClick={() => setPage("teams")}
+                style={secondaryButtonStyle}
+              >
+                Hantera lag →
+              </button>
+            </section>
+
+            <section
+              style={{
+                ...cardStyle,
+                marginBottom: "28px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  justifyContent: "space-between",
+                  gap: "15px",
+                }}
+              >
+                <div>
+                  <p
+                    style={{
+                      margin: 0,
+                      fontSize: "12px",
+                      color: "#6b7280",
+                      fontWeight: "bold",
+                      letterSpacing: "0.7px",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    Föreningen
+                  </p>
+
+                  <h2
+                    style={{
+                      margin: "8px 0",
+                      color: "#123b2a",
+                    }}
+                  >
+                    Hantera ledare
+                  </h2>
+                </div>
+
+                <div
+                  style={{
+                    width: "44px",
+                    height: "44px",
+                    minWidth: "44px",
+                    borderRadius: "13px",
+                    background: "#edf4f0",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "21px",
+                  }}
+                >
+                  👥
+                </div>
+              </div>
+
+              <p
+                style={{
+                  color: "#5f6663",
+                  lineHeight: "1.5",
+                  marginBottom: "18px",
+                }}
+              >
+                Lägg till ledare, välj vilket lag
+                de tillhör och ge dem en egen
+                fyrsiffrig PIN-kod.
+              </p>
+
+              <button
+                onClick={() => setPage("leaders")}
+                style={secondaryButtonStyle}
+              >
+                Hantera ledare →
+              </button>
+            </section>
+          </>
+        )}
 
         <p
           style={{

@@ -15,6 +15,7 @@ export type TrainingData = {
   focus: string
   description: string | null
   notes: string | null
+  team_id: string | null
 }
 
 type EditTrainingProps = {

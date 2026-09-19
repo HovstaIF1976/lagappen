@@ -8,9 +8,8 @@ type PlayersProps = {
 type Player = {
   id: string
   name: string
-  number: number | null
+  number: number
   position: string
-  teamId: string | null
 }
 
 type CheckInData = {
@@ -36,12 +35,6 @@ type CheckOutData = {
 
 type ProfileTab = "checkin" | "checkout"
 
-type Team = {
-  id: string
-  name: string
-  club_name: string
-}
-
 function Players({ onBack }: PlayersProps) {
   const [selectedPlayer, setSelectedPlayer] =
     useState<Player | null>(null)
@@ -55,72 +48,6 @@ function Players({ onBack }: PlayersProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
 
-  const [viewerRole, setViewerRole] =
-    useState<"coach" | "admin" | null>(null)
-
-  const [viewerTeamId, setViewerTeamId] =
-    useState<string | null>(null)
-
-  const [teams, setTeams] =
-    useState<Team[]>([])
-
-  const [showAddPlayer, setShowAddPlayer] =
-    useState(false)
-
-  const [newPlayerName, setNewPlayerName] =
-    useState("")
-
-  const [newPlayerNumber, setNewPlayerNumber] =
-    useState("")
-
-  const [newPlayerPosition, setNewPlayerPosition] =
-    useState("")
-
-  const [newPlayerPin, setNewPlayerPin] =
-    useState("")
-
-  const [newPlayerTeamId, setNewPlayerTeamId] =
-    useState("")
-
-  const [creatingPlayer, setCreatingPlayer] =
-    useState(false)
-
-  const [createPlayerError, setCreatePlayerError] =
-    useState("")
-
-  const [createPlayerSuccess, setCreatePlayerSuccess] =
-    useState("")
-
-  const [editingPlayer, setEditingPlayer] =
-    useState(false)
-
-  const [editPlayerName, setEditPlayerName] =
-    useState("")
-
-  const [editPlayerNumber, setEditPlayerNumber] =
-    useState("")
-
-  const [editPlayerPosition, setEditPlayerPosition] =
-    useState("")
-
-  const [savingPlayer, setSavingPlayer] =
-    useState(false)
-
-  const [editPlayerError, setEditPlayerError] =
-    useState("")
-
-  const [editPlayerSuccess, setEditPlayerSuccess] =
-    useState("")
-
-  const [showDeletePlayer, setShowDeletePlayer] =
-    useState(false)
-
-  const [deletingPlayer, setDeletingPlayer] =
-    useState(false)
-
-  const [deletePlayerError, setDeletePlayerError] =
-    useState("")
-
   useEffect(() => {
     const loadPlayers = async () => {
       setLoading(true)
@@ -132,29 +59,20 @@ function Players({ onBack }: PlayersProps) {
       } = await supabase.auth.getUser()
 
       if (userError || !user) {
-        setError(
-          "Du behöver vara inloggad för att se spelarna."
-        )
+        setError("Du behöver vara inloggad för att se spelarna.")
         setLoading(false)
         return
       }
 
-      const {
-        data: ownProfile,
-        error: profileError,
-      } = await supabase
-        .from("profiles")
-        .select("role, team_id")
-        .eq("id", user.id)
-        .single()
+      const { data: ownProfile, error: profileError } =
+        await supabase
+          .from("profiles")
+          .select("role, team_id")
+          .eq("id", user.id)
+          .single()
 
-      if (
-        profileError ||
-        !ownProfile
-      ) {
-        setError(
-          "Kunde inte läsa din ledarprofil."
-        )
+      if (profileError || !ownProfile) {
+        setError("Kunde inte läsa din ledarprofil.")
         setLoading(false)
         return
       }
@@ -163,119 +81,44 @@ function Players({ onBack }: PlayersProps) {
         ownProfile.role !== "coach" &&
         ownProfile.role !== "admin"
       ) {
-        setError(
-          "Du har inte behörighet att se spelaröversikten."
-        )
+        setError("Du har inte behörighet att se spelaröversikten.")
         setLoading(false)
         return
       }
 
-      setViewerRole(
-        ownProfile.role as "coach" | "admin"
-      )
-
-      setViewerTeamId(
-        ownProfile.team_id
-      )
-
-      if (
-        ownProfile.role === "coach" &&
-        ownProfile.team_id
-      ) {
-        setNewPlayerTeamId(
-          ownProfile.team_id
-        )
-
-        const {
-          data: coachTeam,
-          error: coachTeamError,
-        } = await supabase
-          .from("teams")
-          .select("id, name, club_name")
-          .eq("id", ownProfile.team_id)
-          .maybeSingle()
-
-        if (coachTeamError) {
-          setError(
-            `Kunde inte hämta laget: ${coachTeamError.message}`
-          )
-          setLoading(false)
-          return
-        }
-
-        if (coachTeam) {
-          setTeams([coachTeam as Team])
-        }
+      if (!ownProfile.team_id) {
+        setError("Din ledarprofil är inte kopplad till något lag ännu.")
+        setLoading(false)
+        return
       }
 
-      if (
-        ownProfile.role === "admin"
-      ) {
-        const {
-          data: teamData,
-          error: teamError,
-        } = await supabase
-          .from("teams")
-          .select("id, name, club_name")
-          .order("name", {
+      const [
+        playersResult,
+        checkInsResult,
+        checkOutsResult,
+      ] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select("id, full_name, shirt_number, position")
+          .eq("team_id", ownProfile.team_id)
+          .eq("role", "player")
+          .order("shirt_number", {
             ascending: true,
-          })
-
-        if (teamError) {
-          setError(
-            `Kunde inte hämta lagen: ${teamError.message}`
+            nullsFirst: false,
+          }),
+        supabase
+          .from("check_ins")
+          .select(
+            "id, player_id, mood, mood_reason, energy, pain, other, created_at"
           )
-          setLoading(false)
-          return
-        }
-
-        const loadedTeams =
-          (teamData ?? []) as Team[]
-
-        setTeams(loadedTeams)
-
-        if (loadedTeams.length === 1) {
-          setNewPlayerTeamId(
-            loadedTeams[0].id
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("check_outs")
+          .select(
+            "id, player_id, feeling, effort, body, comment, created_at"
           )
-        }
-      }
-
-      if (
-        ownProfile.role === "coach" &&
-        !ownProfile.team_id
-      ) {
-        setError(
-          "Din ledarprofil är inte kopplad till något lag ännu."
-        )
-        setLoading(false)
-        return
-      }
-
-      let playersQuery = supabase
-        .from("profiles")
-        .select(
-          "id, full_name, shirt_number, position, team_id"
-        )
-        .eq("role", "player")
-        .order("shirt_number", {
-          ascending: true,
-          nullsFirst: false,
-        })
-
-      if (
-        ownProfile.role === "coach" &&
-        ownProfile.team_id
-      ) {
-        playersQuery =
-          playersQuery.eq(
-            "team_id",
-            ownProfile.team_id
-          )
-      }
-
-      const playersResult =
-        await playersQuery
+          .order("created_at", { ascending: false }),
+      ])
 
       if (playersResult.error) {
         setError(
@@ -284,64 +127,6 @@ function Players({ onBack }: PlayersProps) {
         setLoading(false)
         return
       }
-
-      const loadedPlayers: Player[] =
-        (
-          playersResult.data ?? []
-        ).map((profile) => ({
-          id: profile.id,
-          name: profile.full_name,
-          number:
-            profile.shirt_number ?? null,
-          position:
-            profile.position?.trim() ||
-            "Ej angiven",
-          teamId: profile.team_id ?? null,
-        }))
-
-      const playerIds =
-        loadedPlayers.map(
-          (player) => player.id
-        )
-
-      if (playerIds.length === 0) {
-        setPlayers([])
-        setCheckIns([])
-        setCheckOuts([])
-        setLoading(false)
-        return
-      }
-
-      const [
-        checkInsResult,
-        checkOutsResult,
-      ] = await Promise.all([
-        supabase
-          .from("check_ins")
-          .select(
-            "id, player_id, mood, mood_reason, energy, pain, other, created_at"
-          )
-          .in(
-            "player_id",
-            playerIds
-          )
-          .order("created_at", {
-            ascending: false,
-          }),
-
-        supabase
-          .from("check_outs")
-          .select(
-            "id, player_id, feeling, effort, body, comment, created_at"
-          )
-          .in(
-            "player_id",
-            playerIds
-          )
-          .order("created_at", {
-            ascending: false,
-          }),
-      ])
 
       if (checkInsResult.error) {
         setError(
@@ -359,32 +144,45 @@ function Players({ onBack }: PlayersProps) {
         return
       }
 
-      const loadedCheckIns:
-        CheckInData[] = (
-          checkInsResult.data ?? []
-        ).map((item) => ({
+      const loadedPlayers: Player[] = (
+        playersResult.data ?? []
+      ).map((profile) => ({
+        id: profile.id,
+        name: profile.full_name,
+        number: profile.shirt_number ?? 0,
+        position: profile.position?.trim() || "Ej angiven",
+      }))
+
+      const playerIds = new Set(
+        loadedPlayers.map((player) => player.id)
+      )
+
+      const loadedCheckIns: CheckInData[] = (
+        checkInsResult.data ?? []
+      )
+        .filter((item) => playerIds.has(item.player_id))
+        .map((item) => ({
           id: item.id,
           playerId: item.player_id,
           mood: item.mood,
-          moodReason:
-            item.mood_reason ?? "",
+          moodReason: item.mood_reason ?? "",
           energy: item.energy,
           pain: item.pain ?? "",
           other: item.other ?? "",
           date: item.created_at,
         }))
 
-      const loadedCheckOuts:
-        CheckOutData[] = (
-          checkOutsResult.data ?? []
-        ).map((item) => ({
+      const loadedCheckOuts: CheckOutData[] = (
+        checkOutsResult.data ?? []
+      )
+        .filter((item) => playerIds.has(item.player_id))
+        .map((item) => ({
           id: item.id,
           playerId: item.player_id,
           feeling: item.feeling,
           effort: item.effort,
           body: item.body,
-          comment:
-            item.comment ?? "",
+          comment: item.comment ?? "",
           date: item.created_at,
         }))
 
@@ -396,400 +194,6 @@ function Players({ onBack }: PlayersProps) {
 
     void loadPlayers()
   }, [])
-
-  const handleCreatePlayer = async () => {
-    setCreatePlayerError("")
-    setCreatePlayerSuccess("")
-
-    const fullName =
-      newPlayerName.trim()
-
-    const position =
-      newPlayerPosition.trim()
-
-    if (!fullName) {
-      setCreatePlayerError(
-        "Skriv spelarens namn."
-      )
-      return
-    }
-
-    const trimmedNumber =
-      newPlayerNumber.trim()
-
-    const shirtNumber =
-      trimmedNumber === ""
-        ? null
-        : Number(trimmedNumber)
-
-    if (
-      trimmedNumber !== "" &&
-      (
-        !/^\d+$/.test(trimmedNumber) ||
-        shirtNumber === null ||
-        shirtNumber < 0 ||
-        shirtNumber > 999
-      )
-    ) {
-      setCreatePlayerError(
-        "Tröjnumret måste vara ett heltal mellan 0 och 999."
-      )
-      return
-    }
-
-    if (
-      !/^[0-9]{4}$/.test(
-        newPlayerPin
-      )
-    ) {
-      setCreatePlayerError(
-        "PIN-koden ska innehålla exakt fyra siffror."
-      )
-      return
-    }
-
-    const targetTeamId =
-      viewerRole === "admin"
-        ? newPlayerTeamId
-        : viewerTeamId
-
-    if (!targetTeamId) {
-      setCreatePlayerError(
-        viewerRole === "admin"
-          ? "Välj vilket lag spelaren ska tillhöra."
-          : "Din ledarprofil saknar lag."
-      )
-      return
-    }
-
-    setCreatingPlayer(true)
-
-    try {
-      const {
-        data,
-        error: functionError,
-      } =
-        await supabase.functions.invoke(
-          "create-player-auth",
-          {
-            body: {
-              full_name: fullName,
-              shirt_number: shirtNumber,
-              position: position || null,
-              pin: newPlayerPin,
-              team_id: targetTeamId,
-            },
-          }
-        )
-
-      if (functionError) {
-        console.error(
-          "Create player failed:",
-          functionError
-        )
-
-        setCreatePlayerError(
-          "Kunde inte skapa spelaren."
-        )
-        return
-      }
-
-      if (!data?.success) {
-        setCreatePlayerError(
-          data?.error ||
-            "Kunde inte skapa spelaren."
-        )
-        return
-      }
-
-      setCreatePlayerSuccess(
-        `${fullName} har lagts till i laget.`
-      )
-
-      setNewPlayerName("")
-      setNewPlayerNumber("")
-      setNewPlayerPosition("")
-      setNewPlayerPin("")
-
-      const {
-        data: createdProfile,
-        error: profileError,
-      } = await supabase
-        .from("profiles")
-        .select(
-          "id, full_name, shirt_number, position, team_id"
-        )
-        .eq("id", data.player_id)
-        .single()
-
-      if (
-        !profileError &&
-        createdProfile
-      ) {
-        const createdPlayer: Player = {
-          id: createdProfile.id,
-          name:
-            createdProfile.full_name,
-          number:
-            createdProfile.shirt_number ??
-            shirtNumber ??
-            null,
-          position:
-            createdProfile.position?.trim() ||
-            position ||
-            "Ej angiven",
-          teamId:
-            createdProfile.team_id ??
-            targetTeamId,
-        }
-
-        setPlayers((current) =>
-          [...current, createdPlayer].sort(
-            (a, b) => {
-              if (a.number === null) return 1
-              if (b.number === null) return -1
-              return a.number - b.number
-            }
-          )
-        )
-      }
-    } catch (createError) {
-      console.error(
-        "Create player error:",
-        createError
-      )
-
-      setCreatePlayerError(
-        "Något gick fel när spelaren skulle skapas."
-      )
-    } finally {
-      setCreatingPlayer(false)
-    }
-  }
-
-  const startEditingPlayer = (player: Player) => {
-    setEditPlayerName(player.name)
-    setEditPlayerNumber(
-      player.number === null
-        ? ""
-        : String(player.number)
-    )
-    setEditPlayerPosition(
-      player.position === "Ej angiven"
-        ? ""
-        : player.position
-    )
-    setEditPlayerError("")
-    setEditPlayerSuccess("")
-    setEditingPlayer(true)
-  }
-
-  const handleSavePlayer = async () => {
-    if (!selectedPlayer) return
-
-    setEditPlayerError("")
-    setEditPlayerSuccess("")
-
-    const fullName =
-      editPlayerName.trim()
-
-    const trimmedNumber =
-      editPlayerNumber.trim()
-
-    const position =
-      editPlayerPosition.trim()
-
-    if (!fullName) {
-      setEditPlayerError(
-        "Spelaren måste ha ett namn."
-      )
-      return
-    }
-
-    const shirtNumber =
-      trimmedNumber === ""
-        ? null
-        : Number(trimmedNumber)
-
-    if (
-      trimmedNumber !== "" &&
-      (
-        !/^\d+$/.test(trimmedNumber) ||
-        shirtNumber === null ||
-        shirtNumber < 0 ||
-        shirtNumber > 999
-      )
-    ) {
-      setEditPlayerError(
-        "Tröjnumret måste vara ett heltal mellan 0 och 999."
-      )
-      return
-    }
-
-    setSavingPlayer(true)
-
-    const {
-      error: updateError,
-    } = await supabase
-      .from("profiles")
-      .update({
-        full_name: fullName,
-        shirt_number: shirtNumber,
-        position:
-          position === ""
-            ? null
-            : position,
-      })
-      .eq("id", selectedPlayer.id)
-
-    setSavingPlayer(false)
-
-    if (updateError) {
-      console.error(
-        "Update player failed:",
-        updateError
-      )
-
-      setEditPlayerError(
-        updateError.message ||
-          "Kunde inte spara spelarens uppgifter."
-      )
-      return
-    }
-
-    const updatedPlayer: Player = {
-      id: selectedPlayer.id,
-      name: fullName,
-      number: shirtNumber,
-      position:
-        position || "Ej angiven",
-      teamId: selectedPlayer.teamId,
-    }
-
-    setSelectedPlayer(updatedPlayer)
-
-    setPlayers((current) =>
-      current
-        .map((player) =>
-          player.id === updatedPlayer.id
-            ? updatedPlayer
-            : player
-        )
-        .sort((a, b) => {
-          if (a.number === null) return 1
-          if (b.number === null) return -1
-          return a.number - b.number
-        })
-    )
-
-    setEditingPlayer(false)
-
-    setEditPlayerSuccess(
-      "Spelaruppgifterna har sparats."
-    )
-  }
-
-  const handleDeletePlayer = async () => {
-    if (!selectedPlayer) return
-
-    setDeletingPlayer(true)
-    setDeletePlayerError("")
-
-    try {
-      const {
-        data,
-        error: functionError,
-      } = await supabase.functions.invoke(
-        "delete-player-auth",
-        {
-          body: {
-            player_id: selectedPlayer.id,
-          },
-        }
-      )
-
-      if (functionError) {
-        console.error(
-          "Delete player failed:",
-          functionError
-        )
-
-        let message =
-          "Kunde inte ta bort spelaren."
-
-        try {
-          const context = (
-            functionError as {
-              context?: Response
-            }
-          ).context
-
-          if (context) {
-            const body = await context.json()
-
-            if (body?.error) {
-              message = body.error
-            }
-          }
-        } catch {
-          // Behåll standardmeddelandet.
-        }
-
-        setDeletePlayerError(message)
-        return
-      }
-
-      if (!data?.success) {
-        setDeletePlayerError(
-          data?.error ||
-            "Kunde inte ta bort spelaren."
-        )
-        return
-      }
-
-      const deletedPlayerId =
-        selectedPlayer.id
-
-      setPlayers((current) =>
-        current.filter(
-          (player) =>
-            player.id !== deletedPlayerId
-        )
-      )
-
-      setCheckIns((current) =>
-        current.filter(
-          (checkIn) =>
-            checkIn.playerId !== deletedPlayerId
-        )
-      )
-
-      setCheckOuts((current) =>
-        current.filter(
-          (checkOut) =>
-            checkOut.playerId !== deletedPlayerId
-        )
-      )
-
-      setShowDeletePlayer(false)
-      setDeletePlayerError("")
-      setSelectedPlayer(null)
-      setProfileTab("checkin")
-      setEditingPlayer(false)
-      setEditPlayerSuccess("")
-    } catch (deleteError) {
-      console.error(
-        "Delete player error:",
-        deleteError
-      )
-
-      setDeletePlayerError(
-        "Något gick fel när spelaren skulle tas bort."
-      )
-    } finally {
-      setDeletingPlayer(false)
-    }
-  }
 
   const getPlayerCheckIns = (player: Player) => {
     return checkIns
@@ -943,25 +347,6 @@ function Players({ onBack }: PlayersProps) {
       minute: "2-digit",
     }).format(dateObject)
   }
-
-  const getTeamName = (
-    teamId: string | null
-  ) => {
-    if (!teamId) {
-      return "Inget lag"
-    }
-
-    const team = teams.find(
-      (item) => item.id === teamId
-    )
-
-    return team?.name ?? "Okänt lag"
-  }
-
-  const viewerTeamName =
-    viewerRole === "coach"
-      ? getTeamName(viewerTeamId)
-      : null
 
   const pageStyle: CSSProperties = {
     minHeight: "100vh",
@@ -1155,15 +540,7 @@ function Players({ onBack }: PlayersProps) {
         <Header
           eyebrow="Hovsta IF • Spelarprofil"
           title={selectedPlayer.name}
-          subtitle={`${
-            selectedPlayer.number === null
-              ? "Inget nr"
-              : `#${selectedPlayer.number}`
-          } • ${selectedPlayer.position}${
-            viewerRole === "admin"
-              ? ` • ${getTeamName(selectedPlayer.teamId)}`
-              : ""
-          }`}
+          subtitle={`#${selectedPlayer.number} • ${selectedPlayer.position}`}
           backText="Alla spelare"
           onHeaderBack={() => {
             setSelectedPlayer(null)
@@ -1215,7 +592,7 @@ function Players({ onBack }: PlayersProps) {
                     "0 4px 12px rgba(18,59,42,0.16)",
                 }}
               >
-                {selectedPlayer.number ?? "–"}
+                {selectedPlayer.number}
               </div>
 
               <div style={{ flex: 1 }}>
@@ -1236,458 +613,11 @@ function Players({ onBack }: PlayersProps) {
                     fontSize: "14px",
                   }}
                 >
-                  {selectedPlayer.number === null
-                    ? "Inget nr"
-                    : `#${selectedPlayer.number}`}{" "}
-                  • {selectedPlayer.position}
+                  #{selectedPlayer.number} •{" "}
+                  {selectedPlayer.position}
                 </p>
               </div>
             </div>
-          </section>
-
-          <section
-            style={{
-              ...cardStyle,
-              borderTop: "4px solid #123b2a",
-            }}
-          >
-            {!editingPlayer ? (
-              <>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: "12px",
-                  }}
-                >
-                  <div>
-                    <p
-                      style={{
-                        margin: "0 0 4px",
-                        color: "#6b7280",
-                        fontSize: "11px",
-                        fontWeight: "bold",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.7px",
-                      }}
-                    >
-                      Spelarhantering
-                    </p>
-
-                    <strong
-                      style={{
-                        color: "#123b2a",
-                        fontSize: "16px",
-                      }}
-                    >
-                      Uppgifter
-                    </strong>
-                  </div>
-
-                  <button
-                    onClick={() =>
-                      startEditingPlayer(
-                        selectedPlayer
-                      )
-                    }
-                    style={{
-                      border: "none",
-                      borderRadius: "10px",
-                      background: "#123b2a",
-                      color: "white",
-                      padding: "10px 13px",
-                      fontWeight: "bold",
-                      cursor: "pointer",
-                    }}
-                  >
-                    ✏️ Redigera
-                  </button>
-                </div>
-
-                {editPlayerSuccess && (
-                  <div
-                    style={{
-                      marginTop: "13px",
-                      padding: "11px",
-                      background: "#e7f1eb",
-                      border: "1px solid #cfe0d5",
-                      borderRadius: "10px",
-                      color: "#123b2a",
-                      fontSize: "12px",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    ✓ {editPlayerSuccess}
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                <h3
-                  style={{
-                    margin: "0 0 17px",
-                    color: "#123b2a",
-                  }}
-                >
-                  Redigera spelare
-                </h3>
-
-                <label
-                  style={{
-                    display: "block",
-                    marginBottom: "7px",
-                    fontSize: "13px",
-                    fontWeight: "bold",
-                  }}
-                >
-                  Namn
-                </label>
-
-                <input
-                  type="text"
-                  value={editPlayerName}
-                  onChange={(event) =>
-                    setEditPlayerName(
-                      event.target.value
-                    )
-                  }
-                  style={{
-                    width: "100%",
-                    boxSizing: "border-box",
-                    padding: "12px",
-                    border: "1px solid #d7ddd9",
-                    borderRadius: "10px",
-                    fontSize: "15px",
-                    marginBottom: "15px",
-                  }}
-                />
-
-                <label
-                  style={{
-                    display: "block",
-                    marginBottom: "7px",
-                    fontSize: "13px",
-                    fontWeight: "bold",
-                  }}
-                >
-                  Tröjnummer{" "}
-                  <span
-                    style={{
-                      color: "#8b938e",
-                      fontWeight: "normal",
-                    }}
-                  >
-                    (valfritt)
-                  </span>
-                </label>
-
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={editPlayerNumber}
-                  onChange={(event) =>
-                    setEditPlayerNumber(
-                      event.target.value
-                        .replace(/\D/g, "")
-                        .slice(0, 3)
-                    )
-                  }
-                  placeholder="Inget nummer"
-                  style={{
-                    width: "100%",
-                    boxSizing: "border-box",
-                    padding: "12px",
-                    border: "1px solid #d7ddd9",
-                    borderRadius: "10px",
-                    fontSize: "15px",
-                    marginBottom: "15px",
-                  }}
-                />
-
-                <label
-                  style={{
-                    display: "block",
-                    marginBottom: "7px",
-                    fontSize: "13px",
-                    fontWeight: "bold",
-                  }}
-                >
-                  Position{" "}
-                  <span
-                    style={{
-                      color: "#8b938e",
-                      fontWeight: "normal",
-                    }}
-                  >
-                    (valfritt)
-                  </span>
-                </label>
-
-                <input
-                  type="text"
-                  value={editPlayerPosition}
-                  onChange={(event) =>
-                    setEditPlayerPosition(
-                      event.target.value
-                    )
-                  }
-                  placeholder="Ingen position angiven"
-                  style={{
-                    width: "100%",
-                    boxSizing: "border-box",
-                    padding: "12px",
-                    border: "1px solid #d7ddd9",
-                    borderRadius: "10px",
-                    fontSize: "15px",
-                  }}
-                />
-
-                {editPlayerError && (
-                  <div
-                    style={{
-                      marginTop: "14px",
-                      padding: "11px",
-                      background: "#fff1f1",
-                      border: "1px solid #ead0d0",
-                      borderRadius: "10px",
-                      color: "#9b2c2c",
-                      fontSize: "12px",
-                    }}
-                  >
-                    {editPlayerError}
-                  </div>
-                )}
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: "8px",
-                    marginTop: "16px",
-                  }}
-                >
-                  <button
-                    onClick={() => {
-                      setEditingPlayer(false)
-                      setEditPlayerError("")
-                    }}
-                    disabled={savingPlayer}
-                    style={{
-                      padding: "12px",
-                      border: "1px solid #d7ddd9",
-                      borderRadius: "10px",
-                      background: "white",
-                      color: "#555",
-                      fontWeight: "bold",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Avbryt
-                  </button>
-
-                  <button
-                    onClick={() =>
-                      void handleSavePlayer()
-                    }
-                    disabled={savingPlayer}
-                    style={{
-                      padding: "12px",
-                      border: "none",
-                      borderRadius: "10px",
-                      background: savingPlayer
-                        ? "#70877b"
-                        : "#123b2a",
-                      color: "white",
-                      fontWeight: "bold",
-                      cursor: savingPlayer
-                        ? "default"
-                        : "pointer",
-                    }}
-                  >
-                    {savingPlayer
-                      ? "Sparar..."
-                      : "Spara"}
-                  </button>
-                </div>
-              </>
-            )}
-          </section>
-
-          <section
-            style={{
-              ...cardStyle,
-              border: "1px solid #ead0d0",
-              background: "#fffafa",
-            }}
-          >
-            {!showDeletePlayer ? (
-              <>
-                <p
-                  style={{
-                    margin: "0 0 5px",
-                    color: "#9b2c2c",
-                    fontSize: "11px",
-                    fontWeight: "bold",
-                    letterSpacing: "0.7px",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  Spelarhantering
-                </p>
-
-                <h3
-                  style={{
-                    margin: "0 0 8px",
-                    color: "#7f1d1d",
-                    fontSize: "17px",
-                  }}
-                >
-                  Ta bort spelare
-                </h3>
-
-                <p
-                  style={{
-                    margin: "0 0 15px",
-                    color: "#6b5b5b",
-                    fontSize: "13px",
-                    lineHeight: "1.5",
-                  }}
-                >
-                  Tar bort spelarens profil och
-                  inloggning från hemsidan.
-                </p>
-
-                <button
-                  onClick={() => {
-                    setDeletePlayerError("")
-                    setShowDeletePlayer(true)
-                  }}
-                  style={{
-                    width: "100%",
-                    padding: "12px",
-                    border: "1px solid #d9a7a7",
-                    borderRadius: "10px",
-                    background: "white",
-                    color: "#9b2c2c",
-                    fontWeight: "bold",
-                    cursor: "pointer",
-                  }}
-                >
-                  🗑️ Ta bort spelare
-                </button>
-              </>
-            ) : (
-              <>
-                <div
-                  style={{
-                    padding: "14px",
-                    borderRadius: "12px",
-                    background: "#fff1f1",
-                    border: "1px solid #ead0d0",
-                    marginBottom: "14px",
-                  }}
-                >
-                  <strong
-                    style={{
-                      display: "block",
-                      color: "#9b2c2c",
-                      fontSize: "15px",
-                      marginBottom: "7px",
-                    }}
-                  >
-                    Är du säker?
-                  </strong>
-
-                  <p
-                    style={{
-                      margin: 0,
-                      color: "#704545",
-                      fontSize: "13px",
-                      lineHeight: "1.5",
-                    }}
-                  >
-                    Du håller på att ta bort{" "}
-                    <strong>
-                      {selectedPlayer.name}
-                    </strong>
-                    . Spelarens profil och inloggning
-                    kommer att tas bort.
-                  </p>
-                </div>
-
-                {deletePlayerError && (
-                  <div
-                    style={{
-                      marginBottom: "13px",
-                      padding: "11px",
-                      background: "#fff1f1",
-                      border: "1px solid #ead0d0",
-                      borderRadius: "10px",
-                      color: "#9b2c2c",
-                      fontSize: "12px",
-                    }}
-                  >
-                    {deletePlayerError}
-                  </div>
-                )}
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns:
-                      "1fr 1fr",
-                    gap: "8px",
-                  }}
-                >
-                  <button
-                    onClick={() => {
-                      setShowDeletePlayer(false)
-                      setDeletePlayerError("")
-                    }}
-                    disabled={deletingPlayer}
-                    style={{
-                      padding: "12px",
-                      border:
-                        "1px solid #d7ddd9",
-                      borderRadius: "10px",
-                      background: "white",
-                      color: "#555",
-                      fontWeight: "bold",
-                      cursor: deletingPlayer
-                        ? "default"
-                        : "pointer",
-                    }}
-                  >
-                    Avbryt
-                  </button>
-
-                  <button
-                    onClick={() =>
-                      void handleDeletePlayer()
-                    }
-                    disabled={deletingPlayer}
-                    style={{
-                      padding: "12px",
-                      border: "none",
-                      borderRadius: "10px",
-                      background: deletingPlayer
-                        ? "#b67d7d"
-                        : "#9b2c2c",
-                      color: "white",
-                      fontWeight: "bold",
-                      cursor: deletingPlayer
-                        ? "default"
-                        : "pointer",
-                    }}
-                  >
-                    {deletingPlayer
-                      ? "Tar bort..."
-                      : "Ja, ta bort"}
-                  </button>
-                </div>
-              </>
-            )}
           </section>
 
           <section
@@ -2763,27 +1693,9 @@ function Players({ onBack }: PlayersProps) {
               lineHeight: "1.5",
             }}
           >
-            {viewerRole === "coach"
-              ? `Du visar truppen för ${viewerTeamName}.`
-              : "Du visar spelare från Hovsta IF:s lag."}
+            Testspelarna ersätts senare av riktiga
+            spelarkonton.
           </p>
-
-          {viewerRole === "coach" && (
-            <div
-              style={{
-                margin: "0 0 17px",
-                padding: "11px 13px",
-                background: "#edf4f0",
-                border: "1px solid #d6e5dc",
-                borderRadius: "11px",
-                color: "#123b2a",
-                fontSize: "13px",
-                fontWeight: "bold",
-              }}
-            >
-              🏟️ Lag: {viewerTeamName}
-            </div>
-          )}
 
           <div
             style={{
@@ -2882,434 +1794,6 @@ function Players({ onBack }: PlayersProps) {
           </div>
         </section>
 
-        <section
-          style={{
-            ...cardStyle,
-            borderTop: "4px solid #123b2a",
-          }}
-        >
-          {!showAddPlayer ? (
-            <>
-              <p
-                style={{
-                  margin: "0 0 5px",
-                  color: "#6b7280",
-                  fontSize: "11px",
-                  fontWeight: "bold",
-                  letterSpacing: "0.8px",
-                  textTransform: "uppercase",
-                }}
-              >
-                Spelarhantering
-              </p>
-
-              <h2
-                style={{
-                  margin: "0 0 8px",
-                  color: "#123b2a",
-                  fontSize: "20px",
-                }}
-              >
-                Lägg till spelare
-              </h2>
-
-              <p
-                style={{
-                  margin: "0 0 16px",
-                  color: "#6b7280",
-                  fontSize: "13px",
-                  lineHeight: "1.5",
-                }}
-              >
-                Skapa en ny spelare och ge spelaren
-                en fyrsiffrig PIN-kod för inloggning.
-              </p>
-
-              <button
-                onClick={() => {
-                  setShowAddPlayer(true)
-                  setCreatePlayerError("")
-                  setCreatePlayerSuccess("")
-                }}
-                style={{
-                  width: "100%",
-                  padding: "13px",
-                  border: "none",
-                  borderRadius: "12px",
-                  background: "#123b2a",
-                  color: "white",
-                  fontSize: "15px",
-                  fontWeight: "bold",
-                  cursor: "pointer",
-                }}
-              >
-                + Lägg till spelare
-              </button>
-            </>
-          ) : (
-            <>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: "10px",
-                  marginBottom: "18px",
-                }}
-              >
-                <div>
-                  <p
-                    style={{
-                      margin: "0 0 4px",
-                      color: "#6b7280",
-                      fontSize: "11px",
-                      fontWeight: "bold",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    Ny spelare
-                  </p>
-
-                  <h2
-                    style={{
-                      margin: 0,
-                      color: "#123b2a",
-                      fontSize: "20px",
-                    }}
-                  >
-                    Spelaruppgifter
-                  </h2>
-                </div>
-
-                <button
-                  onClick={() => {
-                    setShowAddPlayer(false)
-                    setCreatePlayerError("")
-                    setCreatePlayerSuccess("")
-                  }}
-                  style={{
-                    border: "1px solid #d7ddd9",
-                    borderRadius: "10px",
-                    background: "white",
-                    color: "#555",
-                    padding: "8px 10px",
-                    cursor: "pointer",
-                    fontWeight: "bold",
-                  }}
-                >
-                  Avbryt
-                </button>
-              </div>
-
-              {viewerRole === "admin" && (
-                <>
-                  <label
-                    style={{
-                      display: "block",
-                      marginBottom: "7px",
-                      color: "#37413c",
-                      fontSize: "14px",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    Lag
-                  </label>
-
-                  <select
-                    value={newPlayerTeamId}
-                    onChange={(event) =>
-                      setNewPlayerTeamId(
-                        event.target.value
-                      )
-                    }
-                    style={{
-                      width: "100%",
-                      padding: "13px",
-                      border: "1px solid #d7ddd9",
-                      borderRadius: "11px",
-                      background: "white",
-                      fontSize: "15px",
-                      boxSizing: "border-box",
-                      marginBottom: "16px",
-                    }}
-                  >
-                    <option value="">
-                      Välj lag
-                    </option>
-
-                    {teams.map((team) => (
-                      <option
-                        key={team.id}
-                        value={team.id}
-                      >
-                        {team.club_name} • {team.name}
-                      </option>
-                    ))}
-                  </select>
-                </>
-              )}
-
-              {viewerRole === "coach" && (
-                <>
-                  <label
-                    style={{
-                      display: "block",
-                      marginBottom: "7px",
-                      color: "#37413c",
-                      fontSize: "14px",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    Lag
-                  </label>
-
-                  <div
-                    style={{
-                      width: "100%",
-                      padding: "13px",
-                      border: "1px solid #d6e5dc",
-                      borderRadius: "11px",
-                      background: "#edf4f0",
-                      color: "#123b2a",
-                      fontSize: "14px",
-                      fontWeight: "bold",
-                      boxSizing: "border-box",
-                      marginBottom: "16px",
-                    }}
-                  >
-                    🏟️ Hovsta IF • {viewerTeamName}
-                  </div>
-                </>
-              )}
-
-              <label
-                style={{
-                  display: "block",
-                  marginBottom: "7px",
-                  color: "#37413c",
-                  fontSize: "14px",
-                  fontWeight: "bold",
-                }}
-              >
-                Namn
-              </label>
-
-              <input
-                type="text"
-                value={newPlayerName}
-                onChange={(event) =>
-                  setNewPlayerName(
-                    event.target.value
-                  )
-                }
-                placeholder="Exempel: Erik Andersson"
-                style={{
-                  width: "100%",
-                  padding: "13px",
-                  border: "1px solid #d7ddd9",
-                  borderRadius: "11px",
-                  fontSize: "15px",
-                  boxSizing: "border-box",
-                  marginBottom: "16px",
-                }}
-              />
-
-              <label
-                style={{
-                  display: "block",
-                  marginBottom: "7px",
-                  color: "#37413c",
-                  fontSize: "14px",
-                  fontWeight: "bold",
-                }}
-              >
-                Tröjnummer{" "}
-                <span
-                  style={{
-                    color: "#8b938e",
-                    fontWeight: "normal",
-                  }}
-                >
-                  (valfritt)
-                </span>
-              </label>
-
-              <input
-                type="text"
-                inputMode="numeric"
-                value={newPlayerNumber}
-                onChange={(event) =>
-                  setNewPlayerNumber(
-                    event.target.value
-                      .replace(/\D/g, "")
-                      .slice(0, 3)
-                  )
-                }
-                placeholder="Exempel: 10"
-                style={{
-                  width: "100%",
-                  padding: "13px",
-                  border: "1px solid #d7ddd9",
-                  borderRadius: "11px",
-                  fontSize: "15px",
-                  boxSizing: "border-box",
-                  marginBottom: "16px",
-                }}
-              />
-
-              <label
-                style={{
-                  display: "block",
-                  marginBottom: "7px",
-                  color: "#37413c",
-                  fontSize: "14px",
-                  fontWeight: "bold",
-                }}
-              >
-                Position{" "}
-                <span
-                  style={{
-                    color: "#8b938e",
-                    fontWeight: "normal",
-                  }}
-                >
-                  (valfritt)
-                </span>
-              </label>
-
-              <input
-                type="text"
-                value={newPlayerPosition}
-                onChange={(event) =>
-                  setNewPlayerPosition(
-                    event.target.value
-                  )
-                }
-                placeholder="Exempel: Mittfältare"
-                style={{
-                  width: "100%",
-                  padding: "13px",
-                  border: "1px solid #d7ddd9",
-                  borderRadius: "11px",
-                  fontSize: "15px",
-                  boxSizing: "border-box",
-                  marginBottom: "16px",
-                }}
-              />
-
-              <label
-                style={{
-                  display: "block",
-                  marginBottom: "7px",
-                  color: "#37413c",
-                  fontSize: "14px",
-                  fontWeight: "bold",
-                }}
-              >
-                PIN-kod
-              </label>
-
-              <input
-                type="password"
-                inputMode="numeric"
-                autoComplete="off"
-                maxLength={4}
-                value={newPlayerPin}
-                onChange={(event) =>
-                  setNewPlayerPin(
-                    event.target.value
-                      .replace(/\D/g, "")
-                      .slice(0, 4)
-                  )
-                }
-                placeholder="••••"
-                style={{
-                  width: "100%",
-                  padding: "13px",
-                  border: "1px solid #d7ddd9",
-                  borderRadius: "11px",
-                  fontSize: "20px",
-                  letterSpacing: "7px",
-                  textAlign: "center",
-                  boxSizing: "border-box",
-                }}
-              />
-
-              <p
-                style={{
-                  margin: "8px 0 0",
-                  color: "#8b938e",
-                  fontSize: "11px",
-                  lineHeight: "1.5",
-                }}
-              >
-                PIN-koden används av spelaren vid
-                inloggning och ska bestå av fyra siffror.
-              </p>
-
-              {createPlayerError && (
-                <div
-                  style={{
-                    marginTop: "15px",
-                    padding: "12px",
-                    background: "#fff1f1",
-                    border: "1px solid #ead0d0",
-                    borderRadius: "11px",
-                    color: "#9b2c2c",
-                    fontSize: "13px",
-                  }}
-                >
-                  {createPlayerError}
-                </div>
-              )}
-
-              {createPlayerSuccess && (
-                <div
-                  style={{
-                    marginTop: "15px",
-                    padding: "12px",
-                    background: "#e7f1eb",
-                    border: "1px solid #cfe0d5",
-                    borderRadius: "11px",
-                    color: "#123b2a",
-                    fontSize: "13px",
-                    fontWeight: "bold",
-                  }}
-                >
-                  ✓ {createPlayerSuccess}
-                </div>
-              )}
-
-              <button
-                onClick={() =>
-                  void handleCreatePlayer()
-                }
-                disabled={creatingPlayer}
-                style={{
-                  width: "100%",
-                  marginTop: "17px",
-                  padding: "14px",
-                  border: "none",
-                  borderRadius: "12px",
-                  background: creatingPlayer
-                    ? "#70877b"
-                    : "#123b2a",
-                  color: "white",
-                  fontSize: "15px",
-                  fontWeight: "bold",
-                  cursor: creatingPlayer
-                    ? "default"
-                    : "pointer",
-                }}
-              >
-                {creatingPlayer
-                  ? "Skapar spelare..."
-                  : "Skapa spelare"}
-              </button>
-            </>
-          )}
-        </section>
-
         <div
           style={{
             margin: "25px 0 14px",
@@ -3392,7 +1876,7 @@ function Players({ onBack }: PlayersProps) {
                     fontWeight: "bold",
                   }}
                 >
-                  {player.number ?? "–"}
+                  {player.number}
                 </div>
 
                 <div
@@ -3418,15 +1902,8 @@ function Players({ onBack }: PlayersProps) {
                       fontSize: "12px",
                     }}
                   >
-                    {player.number === null
-                      ? "Inget nr"
-                      : `#${player.number}`}{" "}
-                    • {player.position}
-                    {viewerRole === "admin" && (
-                      <>
-                        {" "}• {getTeamName(player.teamId)}
-                      </>
-                    )}
+                    #{player.number} •{" "}
+                    {player.position}
                   </p>
                 </div>
 

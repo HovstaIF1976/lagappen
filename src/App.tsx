@@ -607,6 +607,29 @@ function App() {
     )
   }
 
+  const handleLogout = async () => {
+    const { error } =
+      await supabase.auth.signOut()
+
+    if (error) {
+      console.error(
+        "Kunde inte logga ut:",
+        error
+      )
+      return
+    }
+
+    setLoggedInPlayerId(null)
+    setPlayerName("")
+    setUserRole(null)
+    setPage("home")
+    setNextTraining(null)
+    setCheckOutTraining(null)
+    setHasCheckedIn(false)
+    setHasCheckedOut(false)
+    setHomeError("")
+  }
+
   const cardStyle: React.CSSProperties = {
     background: "white",
     borderRadius: "18px",
@@ -742,6 +765,27 @@ function App() {
             Här är det senaste från
             laget.
           </p>
+
+          <button
+            onClick={() =>
+              void handleLogout()
+            }
+            style={{
+              marginTop: "18px",
+              padding: "9px 14px",
+              border:
+                "1px solid rgba(255,255,255,0.35)",
+              borderRadius: "10px",
+              background:
+                "rgba(255,255,255,0.08)",
+              color: "white",
+              fontSize: "13px",
+              fontWeight: "bold",
+              cursor: "pointer",
+            }}
+          >
+            Logga ut
+          </button>
         </div>
       </header>
 

@@ -47,34 +47,50 @@ export default {
     { auth: "user" },
     async (req, ctx) => {
       try {
-        const adminId = ctx.userClaims?.id
+        const userId = ctx.userClaims?.id
 
-        if (!adminId) {
+        if (!userId) {
           return Response.json(
             { error: "Obehörig åtkomst." },
             { status: 401 },
           )
         }
 
-        const { data: adminProfile, error: adminError } =
+        const { data: userProfile, error: userError } =
           await ctx.supabaseAdmin
             .from("profiles")
-            .select("id, role")
-            .eq("id", adminId)
+            .select("id, role, team_id")
+            .eq("id", userId)
             .maybeSingle()
 
-        if (adminError) {
-          console.error("Admin check failed:", adminError)
+        if (userError) {
+          console.error("User check failed:", userError)
 
           return Response.json(
-            { error: "Kunde inte kontrollera adminbehörighet." },
+            { error: "Kunde inte kontrollera din behörighet." },
             { status: 500 },
           )
         }
 
-        if (!adminProfile || adminProfile.role !== "admin") {
+        if (
+          !userProfile ||
+          (
+            userProfile.role !== "admin" &&
+            userProfile.role !== "coach"
+          )
+        ) {
           return Response.json(
-            { error: "Endast administratörer får skapa spelare." },
+            { error: "Du har inte behörighet att skapa spelare." },
+            { status: 403 },
+          )
+        }
+
+        if (
+          userProfile.role === "coach" &&
+          !userProfile.team_id
+        ) {
+          return Response.json(
+            { error: "Ledaren är inte kopplad till något lag." },
             { status: 403 },
           )
         }
@@ -85,7 +101,48 @@ export default {
         const pin = body.pin?.trim()
         const position = body.position?.trim() || null
         const shirtNumber = body.shirt_number ?? null
-        const teamId = body.team_id ?? null
+        const requestedTeamId =
+          body.team_id?.trim() || null
+
+        const teamId =
+          userProfile.role === "coach"
+            ? userProfile.team_id
+            : requestedTeamId
+
+        if (!teamId) {
+          return Response.json(
+            { error: "Du måste välja ett lag." },
+            { status: 400 },
+          )
+        }
+
+        const {
+          data: team,
+          error: teamError,
+        } = await ctx.supabaseAdmin
+          .from("teams")
+          .select("id")
+          .eq("id", teamId)
+          .maybeSingle()
+
+        if (teamError) {
+          console.error(
+            "Team check failed:",
+            teamError,
+          )
+
+          return Response.json(
+            { error: "Kunde inte kontrollera laget." },
+            { status: 500 },
+          )
+        }
+
+        if (!team) {
+          return Response.json(
+            { error: "Det valda laget finns inte." },
+            { status: 400 },
+          )
+        }
 
         if (!fullName) {
           return Response.json(

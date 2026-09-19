@@ -1,193 +1,228 @@
+import { useEffect, useState } from "react"
+import { supabase } from "./supabase"
+
 type PlayerProfileProps = {
   onBack: () => void
 }
 
-type Exercise = {
-  id: number
+type Profile = {
+  id: string
+  full_name: string
+  role: string
+  shirt_number: number | null
+  position: string | null
+  team_id: string | null
+}
+
+type Team = {
+  id: string
   name: string
-  description: string
+  club_name: string
 }
 
-type TrainingData = {
-  id?: number
-  date: string
-  time: string
-  location: string
-  focus: string
-  description: string
-  exercises: Exercise[]
-  notes: string
-  createdAt: string
+type CheckIn = {
+  id: string
+  mood: number
+  energy: number
+  pain: string | null
+  other: string | null
+  created_at: string
 }
 
-type CheckInData = {
-  id: number
-  trainingId?: number | string
-  playerName: string
-  mood: number | null
-  moodReason: string
-  energy: number | null
-  pain: string
-  other: string
-  date: string
-}
-
-type CheckOutData = {
-  id: number
-  trainingId: number | string
-  playerName: string
+type CheckOut = {
+  id: string
   feeling: number
   effort: number
   body: number
-  comment: string
-  date: string
+  comment: string | null
+  created_at: string
 }
 
 function PlayerProfile({
   onBack,
 }: PlayerProfileProps) {
-  const playerName = "Testspelare"
+  const [profile, setProfile] =
+    useState<Profile | null>(null)
 
-  const getTrainings = (): TrainingData[] => {
-    const savedTrainings =
-      localStorage.getItem("hovstaTrainings")
+  const [team, setTeam] =
+    useState<Team | null>(null)
 
-    if (!savedTrainings) {
-      return []
-    }
+  const [checkIns, setCheckIns] =
+    useState<CheckIn[]>([])
 
-    try {
-      const parsedTrainings =
-        JSON.parse(savedTrainings)
+  const [checkOuts, setCheckOuts] =
+    useState<CheckOut[]>([])
 
-      if (Array.isArray(parsedTrainings)) {
-        return parsedTrainings
+  const [loading, setLoading] =
+    useState(true)
+
+  const [error, setError] =
+    useState("")
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      setLoading(true)
+      setError("")
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser()
+
+      if (userError || !user) {
+        setError(
+          "Kunde inte hitta den inloggade användaren."
+        )
+        setLoading(false)
+        return
       }
 
-      return []
-    } catch {
-      return []
-    }
-  }
+      const {
+        data: profileData,
+        error: profileError,
+      } = await supabase
+        .from("profiles")
+        .select(
+          "id, full_name, role, shirt_number, position, team_id"
+        )
+        .eq("id", user.id)
+        .single()
 
-  const getCheckIns = (): CheckInData[] => {
-    const savedCheckIns =
-      localStorage.getItem("hovstaCheckIns")
+      if (profileError || !profileData) {
+        console.error(
+          "Profile error:",
+          profileError
+        )
 
-    if (!savedCheckIns) {
-      return []
-    }
-
-    try {
-      const parsedCheckIns =
-        JSON.parse(savedCheckIns)
-
-      if (Array.isArray(parsedCheckIns)) {
-        return parsedCheckIns
+        setError(
+          "Kunde inte hämta din profil."
+        )
+        setLoading(false)
+        return
       }
 
-      return []
-    } catch {
-      return []
-    }
-  }
+      setProfile(profileData)
 
-  const getCheckOuts = (): CheckOutData[] => {
-    const savedCheckOuts =
-      localStorage.getItem("hovstaCheckOuts")
+      if (profileData.team_id) {
+        const {
+          data: teamData,
+          error: teamError,
+        } = await supabase
+          .from("teams")
+          .select(
+            "id, name, club_name"
+          )
+          .eq(
+            "id",
+            profileData.team_id
+          )
+          .maybeSingle()
 
-    if (!savedCheckOuts) {
-      return []
-    }
+        if (teamError) {
+          console.error(
+            "Team error:",
+            teamError
+          )
+        }
 
-    try {
-      const parsedCheckOuts =
-        JSON.parse(savedCheckOuts)
-
-      if (Array.isArray(parsedCheckOuts)) {
-        return parsedCheckOuts
+        if (teamData) {
+          setTeam(teamData)
+        }
       }
 
-      return []
-    } catch {
-      return []
+      if (profileData.role === "player") {
+        const [
+          checkInsResult,
+          checkOutsResult,
+        ] = await Promise.all([
+          supabase
+            .from("check_ins")
+            .select(
+              "id, mood, energy, pain, other, created_at"
+            )
+            .eq(
+              "player_id",
+              profileData.id
+            )
+            .order(
+              "created_at",
+              { ascending: false }
+            ),
+
+          supabase
+            .from("check_outs")
+            .select(
+              "id, feeling, effort, body, comment, created_at"
+            )
+            .eq(
+              "player_id",
+              profileData.id
+            )
+            .order(
+              "created_at",
+              { ascending: false }
+            ),
+        ])
+
+        if (checkInsResult.error) {
+          console.error(
+            "Check-in error:",
+            checkInsResult.error
+          )
+        } else {
+          setCheckIns(
+            checkInsResult.data ?? []
+          )
+        }
+
+        if (checkOutsResult.error) {
+          console.error(
+            "Check-out error:",
+            checkOutsResult.error
+          )
+        } else {
+          setCheckOuts(
+            checkOutsResult.data ?? []
+          )
+        }
+      }
+
+      setLoading(false)
     }
-  }
 
-  const getTrainingId = (
-    training: TrainingData
-  ): number | string => {
-    return training.id ?? training.createdAt
-  }
+    void loadProfile()
+  }, [])
 
-  const getTrainingDateTime = (
-    training: TrainingData
+  const getRoleName = (
+    role: string
   ) => {
-    if (!training.date) {
-      return 0
+    if (role === "admin") {
+      return "Administratör"
     }
 
-    const time =
-      training.time &&
-      /^\d{1,2}:\d{2}$/.test(training.time)
-        ? training.time
-        : "23:59"
-
-    const dateTime = new Date(
-      `${training.date}T${time}:00`
-    ).getTime()
-
-    if (Number.isNaN(dateTime)) {
-      return 0
+    if (role === "coach") {
+      return "Ledare"
     }
 
-    return dateTime
+    return "Spelare"
   }
 
-  const trainings = getTrainings()
+  const getRoleIcon = (
+    role: string
+  ) => {
+    if (role === "admin") {
+      return "🛡️"
+    }
 
-  const playerCheckIns = getCheckIns()
-    .filter(
-      (checkIn) =>
-        checkIn.playerName === playerName
-    )
-    .sort(
-      (a, b) =>
-        new Date(b.date).getTime() -
-        new Date(a.date).getTime()
-    )
+    if (role === "coach") {
+      return "📋"
+    }
 
-  const playerCheckOuts = getCheckOuts()
-    .filter(
-      (checkOut) =>
-        checkOut.playerName === playerName
-    )
-    .sort(
-      (a, b) =>
-        new Date(b.date).getTime() -
-        new Date(a.date).getTime()
-    )
-
-  const completedTrainings = trainings
-    .filter(
-      (training) =>
-        getTrainingDateTime(training) <
-        Date.now()
-    )
-    .sort(
-      (a, b) =>
-        getTrainingDateTime(b) -
-        getTrainingDateTime(a)
-    )
-
-  const latestCheckIn =
-    playerCheckIns[0] ?? null
-
-  const latestCheckOut =
-    playerCheckOuts[0] ?? null
+    return "⚽"
+  }
 
   const getMoodEmoji = (
-    mood: number | null
+    mood: number
   ) => {
     if (mood === 1) return "😞"
     if (mood === 2) return "😕"
@@ -210,57 +245,24 @@ function PlayerProfile({
     return "–"
   }
 
-  const hasPain = (
-    checkIn: CheckInData
-  ) => {
-    const pain =
-      checkIn.pain?.trim().toLowerCase() ?? ""
-
-    return (
-      pain !== "" &&
-      pain !== "inget" &&
-      pain !== "nej" &&
-      pain !== "ingen" &&
-      pain !== "ingenting"
-    )
-  }
-
-  const formatTrainingDate = (
-    training: TrainingData
-  ) => {
-    const date = new Date(
-      `${training.date}T12:00:00`
-    )
-
-    return new Intl.DateTimeFormat(
-      "sv-SE",
-      {
-        weekday: "long",
-        day: "numeric",
-        month: "long",
-      }
-    ).format(date)
-  }
-
-  const formatResponseDate = (
+  const formatDate = (
     date: string
   ) => {
-    const dateObject = new Date(date)
-
     return new Intl.DateTimeFormat(
       "sv-SE",
       {
         day: "numeric",
         month: "short",
+        year: "numeric",
         hour: "2-digit",
         minute: "2-digit",
       }
-    ).format(dateObject)
+    ).format(new Date(date))
   }
 
   const pageStyle: React.CSSProperties = {
     minHeight: "100vh",
-    background: "#f4f6f8",
+    background: "#f4f6f5",
     fontFamily: "Arial, sans-serif",
     color: "#17202a",
   }
@@ -274,6 +276,87 @@ function PlayerProfile({
       "0 2px 8px rgba(0,0,0,0.06)",
   }
 
+  if (loading) {
+    return (
+      <div style={pageStyle}>
+        <main
+          style={{
+            maxWidth: "600px",
+            margin: "0 auto",
+            padding: "40px 20px",
+          }}
+        >
+          <section
+            style={{
+              ...cardStyle,
+              textAlign: "center",
+            }}
+          >
+            Hämtar din profil...
+          </section>
+        </main>
+      </div>
+    )
+  }
+
+  if (error || !profile) {
+    return (
+      <div style={pageStyle}>
+        <main
+          style={{
+            maxWidth: "600px",
+            margin: "0 auto",
+            padding: "40px 20px",
+          }}
+        >
+          <section style={cardStyle}>
+            <h2
+              style={{
+                color: "#123b2a",
+                marginTop: 0,
+              }}
+            >
+              Profil
+            </h2>
+
+            <p
+              style={{
+                color: "#9b2c2c",
+              }}
+            >
+              {error ||
+                "Profilen kunde inte hämtas."}
+            </p>
+
+            <button
+              onClick={onBack}
+              style={{
+                border: "none",
+                borderRadius: "10px",
+                background: "#123b2a",
+                color: "white",
+                padding: "11px 15px",
+                fontWeight: "bold",
+                cursor: "pointer",
+              }}
+            >
+              ← Tillbaka
+            </button>
+          </section>
+        </main>
+      </div>
+    )
+  }
+
+  const isPlayer =
+    profile.role === "player"
+
+  const latestCheckIn =
+    checkIns[0] ?? null
+
+  const latestCheckOut =
+    checkOuts[0] ?? null
+
   return (
     <div style={pageStyle}>
       <header
@@ -281,53 +364,64 @@ function PlayerProfile({
           background: "#123b2a",
           color: "white",
           padding: "24px 20px",
-          borderRadius: "0 0 24px 24px",
+          borderRadius:
+            "0 0 24px 24px",
         }}
       >
-        <button
-          onClick={onBack}
+        <div
           style={{
-            background:
-              "rgba(255,255,255,0.15)",
-            color: "white",
-            border:
-              "1px solid rgba(255,255,255,0.3)",
-            borderRadius: "10px",
-            padding: "9px 13px",
-            cursor: "pointer",
-            marginBottom: "18px",
+            maxWidth: "600px",
+            margin: "0 auto",
           }}
         >
-          ← Tillbaka
-        </button>
+          <button
+            onClick={onBack}
+            style={{
+              background:
+                "rgba(255,255,255,0.15)",
+              color: "white",
+              border:
+                "1px solid rgba(255,255,255,0.3)",
+              borderRadius: "10px",
+              padding: "9px 13px",
+              cursor: "pointer",
+              marginBottom: "18px",
+            }}
+          >
+            ← Tillbaka
+          </button>
 
-        <p
-          style={{
-            margin: 0,
-            fontSize: "13px",
-            opacity: 0.8,
-          }}
-        >
-          HOVSTA IF • SPELARE
-        </p>
+          <p
+            style={{
+              margin: 0,
+              fontSize: "13px",
+              opacity: 0.8,
+            }}
+          >
+            HOVSTA IF •{" "}
+            {getRoleName(
+              profile.role
+            ).toUpperCase()}
+          </p>
 
-        <h1
-          style={{
-            margin: "8px 0 4px",
-            fontSize: "28px",
-          }}
-        >
-          Min profil 👤
-        </h1>
+          <h1
+            style={{
+              margin: "8px 0 4px",
+              fontSize: "28px",
+            }}
+          >
+            Min profil 👤
+          </h1>
 
-        <p
-          style={{
-            margin: 0,
-            opacity: 0.9,
-          }}
-        >
-          Din träningsöversikt
-        </p>
+          <p
+            style={{
+              margin: 0,
+              opacity: 0.9,
+            }}
+          >
+            Mina uppgifter
+          </p>
+        </div>
       </header>
 
       <main
@@ -354,32 +448,45 @@ function PlayerProfile({
                 background: "#e7f1eb",
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "center",
+                justifyContent:
+                  "center",
                 fontSize: "30px",
               }}
             >
-              👤
+              {getRoleIcon(
+                profile.role
+              )}
             </div>
 
-            <div>
+            <div
+              style={{
+                minWidth: 0,
+              }}
+            >
               <p
                 style={{
                   margin: "0 0 4px",
                   color: "#6b7280",
                   fontSize: "12px",
-                  textTransform: "uppercase",
+                  textTransform:
+                    "uppercase",
+                  fontWeight: "bold",
                 }}
               >
-                Spelare
+                {getRoleName(
+                  profile.role
+                )}
               </p>
 
               <h2
                 style={{
                   margin: 0,
                   color: "#123b2a",
+                  wordBreak:
+                    "break-word",
                 }}
               >
-                {playerName}
+                {profile.full_name}
               </h2>
 
               <p
@@ -389,87 +496,187 @@ function PlayerProfile({
                   fontSize: "14px",
                 }}
               >
-                Hovsta IF
+                {team
+                  ? `${team.club_name} • ${team.name}`
+                  : "Hovsta IF"}
               </p>
             </div>
           </div>
         </section>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns:
-              "repeat(2, 1fr)",
-            gap: "12px",
-            marginBottom: "16px",
-          }}
-        >
-          <section
-            style={{
-              background: "white",
-              borderRadius: "18px",
-              padding: "18px",
-              boxShadow:
-                "0 2px 8px rgba(0,0,0,0.06)",
-            }}
-          >
-            <p
-              style={{
-                margin: "0 0 6px",
-                color: "#6b7280",
-                fontSize: "12px",
-              }}
-            >
-              Check-ins
-            </p>
-
-            <strong
-              style={{
-                fontSize: "26px",
-                color: "#123b2a",
-              }}
-            >
-              {playerCheckIns.length}
-            </strong>
-          </section>
-
-          <section
-            style={{
-              background: "white",
-              borderRadius: "18px",
-              padding: "18px",
-              boxShadow:
-                "0 2px 8px rgba(0,0,0,0.06)",
-            }}
-          >
-            <p
-              style={{
-                margin: "0 0 6px",
-                color: "#6b7280",
-                fontSize: "12px",
-              }}
-            >
-              Check-outs
-            </p>
-
-            <strong
-              style={{
-                fontSize: "26px",
-                color: "#123b2a",
-              }}
-            >
-              {playerCheckOuts.length}
-            </strong>
-          </section>
-        </div>
-
-        {(latestCheckIn ||
-          latestCheckOut) && (
+        {isPlayer ? (
           <>
+            <section style={cardStyle}>
+              <p
+                style={{
+                  margin: "0 0 14px",
+                  color: "#6b7280",
+                  fontSize: "11px",
+                  fontWeight: "bold",
+                  letterSpacing:
+                    "0.7px",
+                }}
+              >
+                SPELARUPPGIFTER
+              </p>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "1fr 1fr",
+                  gap: "10px",
+                }}
+              >
+                <div
+                  style={{
+                    background:
+                      "#f4f6f5",
+                    borderRadius:
+                      "12px",
+                    padding: "14px",
+                  }}
+                >
+                  <span
+                    style={{
+                      display:
+                        "block",
+                      color:
+                        "#6b7280",
+                      fontSize:
+                        "11px",
+                      marginBottom:
+                        "5px",
+                    }}
+                  >
+                    Tröjnummer
+                  </span>
+
+                  <strong
+                    style={{
+                      color:
+                        "#123b2a",
+                    }}
+                  >
+                    {profile.shirt_number ??
+                      "Inget nr"}
+                  </strong>
+                </div>
+
+                <div
+                  style={{
+                    background:
+                      "#f4f6f5",
+                    borderRadius:
+                      "12px",
+                    padding: "14px",
+                  }}
+                >
+                  <span
+                    style={{
+                      display:
+                        "block",
+                      color:
+                        "#6b7280",
+                      fontSize:
+                        "11px",
+                      marginBottom:
+                        "5px",
+                    }}
+                  >
+                    Position
+                  </span>
+
+                  <strong
+                    style={{
+                      color:
+                        "#123b2a",
+                    }}
+                  >
+                    {profile.position?.trim() ||
+                      "Ej angiven"}
+                  </strong>
+                </div>
+              </div>
+            </section>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "1fr 1fr",
+                gap: "12px",
+                marginBottom:
+                  "16px",
+              }}
+            >
+              <section
+                style={{
+                  ...cardStyle,
+                  marginBottom: 0,
+                }}
+              >
+                <p
+                  style={{
+                    margin:
+                      "0 0 6px",
+                    color:
+                      "#6b7280",
+                    fontSize:
+                      "12px",
+                  }}
+                >
+                  Check-ins
+                </p>
+
+                <strong
+                  style={{
+                    fontSize:
+                      "26px",
+                    color:
+                      "#123b2a",
+                  }}
+                >
+                  {checkIns.length}
+                </strong>
+              </section>
+
+              <section
+                style={{
+                  ...cardStyle,
+                  marginBottom: 0,
+                }}
+              >
+                <p
+                  style={{
+                    margin:
+                      "0 0 6px",
+                    color:
+                      "#6b7280",
+                    fontSize:
+                      "12px",
+                  }}
+                >
+                  Check-outs
+                </p>
+
+                <strong
+                  style={{
+                    fontSize:
+                      "26px",
+                    color:
+                      "#123b2a",
+                  }}
+                >
+                  {checkOuts.length}
+                </strong>
+              </section>
+            </div>
+
             <div
               style={{
                 margin:
-                  "26px 0 12px",
+                  "28px 0 12px",
               }}
             >
               <p
@@ -478,7 +685,8 @@ function PlayerProfile({
                   color: "#6b7280",
                   fontSize: "11px",
                   fontWeight: "bold",
-                  letterSpacing: "0.7px",
+                  letterSpacing:
+                    "0.7px",
                 }}
               >
                 SENASTE STATUS
@@ -495,468 +703,422 @@ function PlayerProfile({
               </h2>
             </div>
 
-            {latestCheckIn && (
+            {!latestCheckIn &&
+            !latestCheckOut ? (
               <section style={cardStyle}>
-                <div
+                <p
                   style={{
-                    display: "flex",
-                    justifyContent:
-                      "space-between",
-                    gap: "12px",
-                    alignItems:
-                      "flex-start",
+                    margin: 0,
+                    color: "#666",
+                    textAlign:
+                      "center",
                   }}
                 >
-                  <div>
+                  Du har inga
+                  registrerade svar
+                  ännu.
+                </p>
+              </section>
+            ) : (
+              <>
+                {latestCheckIn && (
+                  <section
+                    style={cardStyle}
+                  >
+                    <div
+                      style={{
+                        display:
+                          "flex",
+                        justifyContent:
+                          "space-between",
+                        alignItems:
+                          "center",
+                        gap: "12px",
+                      }}
+                    >
+                      <div>
+                        <p
+                          style={{
+                            margin:
+                              "0 0 5px",
+                            color:
+                              "#52705f",
+                            fontSize:
+                              "11px",
+                            fontWeight:
+                              "bold",
+                          }}
+                        >
+                          SENASTE CHECK-IN
+                        </p>
+
+                        <h3
+                          style={{
+                            margin: 0,
+                            color:
+                              "#123b2a",
+                          }}
+                        >
+                          Mående{" "}
+                          {
+                            latestCheckIn.mood
+                          }
+                          /5
+                        </h3>
+                      </div>
+
+                      <span
+                        style={{
+                          fontSize:
+                            "32px",
+                        }}
+                      >
+                        {getMoodEmoji(
+                          latestCheckIn.mood
+                        )}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        display:
+                          "grid",
+                        gridTemplateColumns:
+                          "1fr 1fr",
+                        gap: "10px",
+                        marginTop:
+                          "16px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          background:
+                            "#f4f6f5",
+                          borderRadius:
+                            "12px",
+                          padding:
+                            "12px",
+                        }}
+                      >
+                        <span
+                          style={{
+                            display:
+                              "block",
+                            color:
+                              "#6b7280",
+                            fontSize:
+                              "11px",
+                            marginBottom:
+                              "4px",
+                          }}
+                        >
+                          Mående
+                        </span>
+
+                        <strong>
+                          {getMoodEmoji(
+                            latestCheckIn.mood
+                          )}{" "}
+                          {
+                            latestCheckIn.mood
+                          }
+                          /5
+                        </strong>
+                      </div>
+
+                      <div
+                        style={{
+                          background:
+                            "#f4f6f5",
+                          borderRadius:
+                            "12px",
+                          padding:
+                            "12px",
+                        }}
+                      >
+                        <span
+                          style={{
+                            display:
+                              "block",
+                            color:
+                              "#6b7280",
+                            fontSize:
+                              "11px",
+                            marginBottom:
+                              "4px",
+                          }}
+                        >
+                          Energi
+                        </span>
+
+                        <strong>
+                          ⚡{" "}
+                          {
+                            latestCheckIn.energy
+                          }
+                          /5
+                        </strong>
+                      </div>
+                    </div>
+
                     <p
                       style={{
-                        margin: "0 0 5px",
-                        color: "#52705f",
-                        fontSize: "11px",
-                        fontWeight: "bold",
+                        margin:
+                          "14px 0 0",
+                        color:
+                          "#777",
+                        fontSize:
+                          "12px",
                       }}
                     >
-                      CHECK-IN
+                      {formatDate(
+                        latestCheckIn.created_at
+                      )}
                     </p>
-
-                    <h3
-                      style={{
-                        margin: 0,
-                        color: "#123b2a",
-                      }}
-                    >
-                      Inför träning
-                    </h3>
-                  </div>
-
-                  <span
-                    style={{
-                      fontSize: "32px",
-                    }}
-                  >
-                    {getMoodEmoji(
-                      latestCheckIn.mood
-                    )}
-                  </span>
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns:
-                      "repeat(2, 1fr)",
-                    gap: "10px",
-                    marginTop: "16px",
-                  }}
-                >
-                  <div
-                    style={{
-                      background: "#f4f6f8",
-                      borderRadius: "12px",
-                      padding: "12px",
-                    }}
-                  >
-                    <span
-                      style={{
-                        display: "block",
-                        color: "#6b7280",
-                        fontSize: "11px",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      Mående
-                    </span>
-
-                    <strong>
-                      {getMoodEmoji(
-                        latestCheckIn.mood
-                      )}{" "}
-                      {latestCheckIn.mood ??
-                        "–"}
-                      /5
-                    </strong>
-                  </div>
-
-                  <div
-                    style={{
-                      background: "#f4f6f8",
-                      borderRadius: "12px",
-                      padding: "12px",
-                    }}
-                  >
-                    <span
-                      style={{
-                        display: "block",
-                        color: "#6b7280",
-                        fontSize: "11px",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      Energi
-                    </span>
-
-                    <strong>
-                      ⚡{" "}
-                      {latestCheckIn.energy ??
-                        "–"}
-                      /5
-                    </strong>
-                  </div>
-                </div>
-
-                {hasPain(latestCheckIn) && (
-                  <div
-                    style={{
-                      marginTop: "12px",
-                      padding: "12px",
-                      background: "#fff7f7",
-                      borderRadius: "12px",
-                      border:
-                        "1px solid #ead0d0",
-                      color: "#8b3434",
-                    }}
-                  >
-                    <strong
-                      style={{
-                        display: "block",
-                        fontSize: "13px",
-                      }}
-                    >
-                      🩹 Känning angiven
-                    </strong>
-
-                    <span
-                      style={{
-                        display: "block",
-                        marginTop: "4px",
-                        fontSize: "13px",
-                      }}
-                    >
-                      {latestCheckIn.pain}
-                    </span>
-                  </div>
+                  </section>
                 )}
 
-                <p
-                  style={{
-                    margin:
-                      "14px 0 0",
-                    color: "#777",
-                    fontSize: "12px",
-                  }}
-                >
-                  {formatResponseDate(
-                    latestCheckIn.date
-                  )}
-                </p>
-              </section>
-            )}
+                {latestCheckOut && (
+                  <section
+                    style={cardStyle}
+                  >
+                    <div
+                      style={{
+                        display:
+                          "flex",
+                        justifyContent:
+                          "space-between",
+                        alignItems:
+                          "center",
+                        gap: "12px",
+                      }}
+                    >
+                      <div>
+                        <p
+                          style={{
+                            margin:
+                              "0 0 5px",
+                            color:
+                              "#52705f",
+                            fontSize:
+                              "11px",
+                            fontWeight:
+                              "bold",
+                          }}
+                        >
+                          SENASTE CHECK-OUT
+                        </p>
 
-            {latestCheckOut && (
-              <section style={cardStyle}>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent:
-                      "space-between",
-                    gap: "12px",
-                    alignItems:
-                      "flex-start",
-                  }}
-                >
-                  <div>
+                        <h3
+                          style={{
+                            margin: 0,
+                            color:
+                              "#123b2a",
+                          }}
+                        >
+                          Efter träning
+                        </h3>
+                      </div>
+
+                      <span
+                        style={{
+                          fontSize:
+                            "32px",
+                        }}
+                      >
+                        {getFeelingEmoji(
+                          latestCheckOut.feeling
+                        )}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        display:
+                          "grid",
+                        gridTemplateColumns:
+                          "repeat(3, 1fr)",
+                        gap: "8px",
+                        marginTop:
+                          "16px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          background:
+                            "#f4f6f5",
+                          borderRadius:
+                            "12px",
+                          padding:
+                            "11px 5px",
+                          textAlign:
+                            "center",
+                        }}
+                      >
+                        <span
+                          style={{
+                            display:
+                              "block",
+                            color:
+                              "#6b7280",
+                            fontSize:
+                              "10px",
+                            marginBottom:
+                              "4px",
+                          }}
+                        >
+                          Känsla
+                        </span>
+
+                        <strong>
+                          {
+                            latestCheckOut.feeling
+                          }
+                          /5
+                        </strong>
+                      </div>
+
+                      <div
+                        style={{
+                          background:
+                            "#f4f6f5",
+                          borderRadius:
+                            "12px",
+                          padding:
+                            "11px 5px",
+                          textAlign:
+                            "center",
+                        }}
+                      >
+                        <span
+                          style={{
+                            display:
+                              "block",
+                            color:
+                              "#6b7280",
+                            fontSize:
+                              "10px",
+                            marginBottom:
+                              "4px",
+                          }}
+                        >
+                          Ansträngning
+                        </span>
+
+                        <strong>
+                          {
+                            latestCheckOut.effort
+                          }
+                          /5
+                        </strong>
+                      </div>
+
+                      <div
+                        style={{
+                          background:
+                            "#f4f6f5",
+                          borderRadius:
+                            "12px",
+                          padding:
+                            "11px 5px",
+                          textAlign:
+                            "center",
+                        }}
+                      >
+                        <span
+                          style={{
+                            display:
+                              "block",
+                            color:
+                              "#6b7280",
+                            fontSize:
+                              "10px",
+                            marginBottom:
+                              "4px",
+                          }}
+                        >
+                          Kropp
+                        </span>
+
+                        <strong>
+                          {
+                            latestCheckOut.body
+                          }
+                          /5
+                        </strong>
+                      </div>
+                    </div>
+
                     <p
                       style={{
-                        margin: "0 0 5px",
-                        color: "#52705f",
-                        fontSize: "11px",
-                        fontWeight: "bold",
+                        margin:
+                          "14px 0 0",
+                        color:
+                          "#777",
+                        fontSize:
+                          "12px",
                       }}
                     >
-                      CHECK-OUT
+                      {formatDate(
+                        latestCheckOut.created_at
+                      )}
                     </p>
-
-                    <h3
-                      style={{
-                        margin: 0,
-                        color: "#123b2a",
-                      }}
-                    >
-                      Efter träning
-                    </h3>
-                  </div>
-
-                  <span
-                    style={{
-                      fontSize: "32px",
-                    }}
-                  >
-                    {getFeelingEmoji(
-                      latestCheckOut.feeling
-                    )}
-                  </span>
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns:
-                      "repeat(3, 1fr)",
-                    gap: "8px",
-                    marginTop: "16px",
-                  }}
-                >
-                  <div
-                    style={{
-                      background: "#f4f6f8",
-                      borderRadius: "12px",
-                      padding: "11px 6px",
-                      textAlign: "center",
-                    }}
-                  >
-                    <span
-                      style={{
-                        display: "block",
-                        color: "#6b7280",
-                        fontSize: "10px",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      Känsla
-                    </span>
-
-                    <strong>
-                      {latestCheckOut.feeling}/5
-                    </strong>
-                  </div>
-
-                  <div
-                    style={{
-                      background: "#f4f6f8",
-                      borderRadius: "12px",
-                      padding: "11px 6px",
-                      textAlign: "center",
-                    }}
-                  >
-                    <span
-                      style={{
-                        display: "block",
-                        color: "#6b7280",
-                        fontSize: "10px",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      Ansträngning
-                    </span>
-
-                    <strong>
-                      {latestCheckOut.effort}/5
-                    </strong>
-                  </div>
-
-                  <div
-                    style={{
-                      background: "#f4f6f8",
-                      borderRadius: "12px",
-                      padding: "11px 6px",
-                      textAlign: "center",
-                    }}
-                  >
-                    <span
-                      style={{
-                        display: "block",
-                        color: "#6b7280",
-                        fontSize: "10px",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      Kropp
-                    </span>
-
-                    <strong>
-                      {latestCheckOut.body}/5
-                    </strong>
-                  </div>
-                </div>
-
-                <p
-                  style={{
-                    margin:
-                      "14px 0 0",
-                    color: "#777",
-                    fontSize: "12px",
-                  }}
-                >
-                  {formatResponseDate(
-                    latestCheckOut.date
-                  )}
-                </p>
-              </section>
+                  </section>
+                )}
+              </>
             )}
           </>
-        )}
-
-        <div
-          style={{
-            margin: "28px 0 12px",
-          }}
-        >
-          <p
+        ) : (
+          <section
             style={{
-              margin: "0 0 4px",
-              color: "#6b7280",
-              fontSize: "11px",
-              fontWeight: "bold",
-              letterSpacing: "0.7px",
+              ...cardStyle,
+              borderTop:
+                "4px solid #f39200",
             }}
           >
-            TRÄNINGSHISTORIK
-          </p>
+            <p
+              style={{
+                margin: "0 0 5px",
+                color: "#6b7280",
+                fontSize: "11px",
+                fontWeight: "bold",
+                letterSpacing:
+                  "0.7px",
+              }}
+            >
+              {profile.role === "admin"
+                ? "ADMINISTRATÖR"
+                : "LEDARPROFIL"}
+            </p>
 
-          <h2
-            style={{
-              margin: 0,
-              color: "#123b2a",
-              fontSize: "22px",
-            }}
-          >
-            Mina senaste träningar
-          </h2>
-        </div>
+            <h2
+              style={{
+                margin:
+                  "0 0 8px",
+                color: "#123b2a",
+                fontSize: "20px",
+              }}
+            >
+              {profile.full_name}
+            </h2>
 
-        {completedTrainings.length === 0 ? (
-          <section style={cardStyle}>
             <p
               style={{
                 margin: 0,
                 color: "#666",
-                textAlign: "center",
+                fontSize: "14px",
+                lineHeight: 1.5,
               }}
             >
-              Det finns inga genomförda
-              träningar ännu.
+              {profile.role === "admin"
+                ? "Du har administratörsbehörighet för Hovsta IF. Spelarhantering och lagfunktioner finns under Ledarläge."
+                : `Du är ledare${
+                    team
+                      ? ` för ${team.name}`
+                      : ""
+                  }. Spelarhantering och lagfunktioner finns under Ledarläge.`}
             </p>
           </section>
-        ) : (
-          completedTrainings
-            .slice(0, 5)
-            .map((training) => {
-              const trainingId =
-                getTrainingId(training)
-
-              const checkIn =
-                playerCheckIns.find(
-                  (item) =>
-                    String(
-                      item.trainingId
-                    ) ===
-                    String(trainingId)
-                )
-
-              const checkOut =
-                playerCheckOuts.find(
-                  (item) =>
-                    String(
-                      item.trainingId
-                    ) ===
-                    String(trainingId)
-                )
-
-              return (
-                <section
-                  key={String(trainingId)}
-                  style={cardStyle}
-                >
-                  <p
-                    style={{
-                      margin: "0 0 5px",
-                      color: "#6b7280",
-                      fontSize: "12px",
-                      textTransform:
-                        "capitalize",
-                    }}
-                  >
-                    {formatTrainingDate(
-                      training
-                    )}{" "}
-                    • {training.time}
-                  </p>
-
-                  <h3
-                    style={{
-                      margin: "0 0 5px",
-                      color: "#123b2a",
-                    }}
-                  >
-                    {training.focus}
-                  </h3>
-
-                  <p
-                    style={{
-                      margin: 0,
-                      color: "#666",
-                      fontSize: "13px",
-                    }}
-                  >
-                    📍 {training.location}
-                  </p>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: "7px",
-                      marginTop: "14px",
-                      paddingTop: "12px",
-                      borderTop:
-                        "1px solid #eee",
-                    }}
-                  >
-                    <span
-                      style={{
-                        padding:
-                          "6px 9px",
-                        borderRadius:
-                          "999px",
-                        background: checkIn
-                          ? "#e7f1eb"
-                          : "#f1f3f4",
-                        color: checkIn
-                          ? "#123b2a"
-                          : "#777",
-                        fontSize: "11px",
-                        fontWeight: "bold",
-                      }}
-                    >
-                      {checkIn
-                        ? "✓ Check-in"
-                        : "– Ingen check-in"}
-                    </span>
-
-                    <span
-                      style={{
-                        padding:
-                          "6px 9px",
-                        borderRadius:
-                          "999px",
-                        background: checkOut
-                          ? "#e7f1eb"
-                          : "#f1f3f4",
-                        color: checkOut
-                          ? "#123b2a"
-                          : "#777",
-                        fontSize: "11px",
-                        fontWeight: "bold",
-                      }}
-                    >
-                      {checkOut
-                        ? "✓ Check-out"
-                        : "– Ingen check-out"}
-                    </span>
-                  </div>
-                </section>
-              )
-            })
         )}
       </main>
     </div>

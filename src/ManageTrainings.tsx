@@ -8,6 +8,12 @@ type ManageTrainingsProps = {
   onBack: () => void
 }
 
+type Team = {
+  id: string
+  name: string
+  club_name: string
+}
+
 function ManageTrainings({
   onBack,
 }: ManageTrainingsProps) {
@@ -22,40 +28,166 @@ function ManageTrainings({
   const [deleting, setDeleting] = useState(false)
   const [errorMessage, setErrorMessage] = useState("")
 
+  const [viewerRole, setViewerRole] =
+    useState<"coach" | "admin" | null>(null)
+
+  const [viewerTeamId, setViewerTeamId] =
+    useState<string | null>(null)
+
+  const [teams, setTeams] =
+    useState<Team[]>([])
+
   const loadTrainings = async () => {
     setLoading(true)
     setErrorMessage("")
 
-    const { data, error } = await supabase
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      setTrainings([])
+      setErrorMessage(
+        "Du behöver vara inloggad som ledare eller admin."
+      )
+      setLoading(false)
+      return
+    }
+
+    const {
+      data: profile,
+      error: profileError,
+    } = await supabase
+      .from("profiles")
+      .select("role, team_id")
+      .eq("id", user.id)
+      .single()
+
+    if (
+      profileError ||
+      !profile ||
+      (
+        profile.role !== "coach" &&
+        profile.role !== "admin"
+      )
+    ) {
+      setTrainings([])
+      setErrorMessage(
+        "Du har inte behörighet att hantera träningar."
+      )
+      setLoading(false)
+      return
+    }
+
+    setViewerRole(profile.role)
+    setViewerTeamId(profile.team_id)
+
+    if (
+      profile.role === "coach" &&
+      !profile.team_id
+    ) {
+      setTrainings([])
+      setErrorMessage(
+        "Din ledarprofil är inte kopplad till något lag."
+      )
+      setLoading(false)
+      return
+    }
+
+    let trainingQuery = supabase
       .from("trainings")
       .select(
-        "id, date, time, location, focus, description, notes"
+        "id, date, time, location, focus, description, notes, team_id"
       )
-      .order("date", { ascending: true })
-      .order("time", { ascending: true })
+
+    if (
+      profile.role === "coach" &&
+      profile.team_id
+    ) {
+      trainingQuery = trainingQuery.eq(
+        "team_id",
+        profile.team_id
+      )
+    }
+
+    const {
+      data,
+      error,
+    } = await trainingQuery
+      .order("date", {
+        ascending: true,
+      })
+      .order("time", {
+        ascending: true,
+      })
 
     if (error) {
       console.error(
         "Kunde inte hämta träningar:",
         error
       )
+
       setTrainings([])
       setErrorMessage(
-        "Kunde inte hämta lagets träningar."
+        "Kunde inte hämta träningarna."
       )
       setLoading(false)
       return
     }
 
+    const {
+      data: teamData,
+      error: teamError,
+    } = await supabase
+      .from("teams")
+      .select("id, name, club_name")
+      .order("name", {
+        ascending: true,
+      })
+
+    if (teamError) {
+      console.error(
+        "Kunde inte hämta lag:",
+        teamError
+      )
+
+      setTeams([])
+    } else {
+      setTeams(
+        (teamData as Team[] | null) ?? []
+      )
+    }
+
     setTrainings(
       (data as TrainingData[] | null) ?? []
     )
+
     setLoading(false)
   }
 
   useEffect(() => {
     void loadTrainings()
   }, [])
+
+  const getTeamName = (
+    teamId: string | null
+  ) => {
+    if (!teamId) {
+      return "Inget lag"
+    }
+
+    const team = teams.find(
+      (item) => item.id === teamId
+    )
+
+    return team?.name ?? "Okänt lag"
+  }
+
+  const viewerTeamName =
+    viewerRole === "coach"
+      ? getTeamName(viewerTeamId)
+      : null
 
   const formatDate = (date: string) => {
     if (!date) {
@@ -290,7 +422,9 @@ function ManageTrainings({
                 fontSize: "22px",
               }}
             >
-              Alla träningar
+              {viewerRole === "coach"
+                ? `Träningar • ${viewerTeamName}`
+                : "Alla träningar"}
             </h2>
           </div>
 
@@ -401,6 +535,25 @@ function ManageTrainings({
                       >
                         {training.focus}
                       </h2>
+
+                      {viewerRole === "admin" && (
+                        <div
+                          style={{
+                            display: "inline-block",
+                            marginTop: "4px",
+                            padding: "5px 9px",
+                            borderRadius: "20px",
+                            background: "#fff3df",
+                            color: "#8a5200",
+                            fontSize: "12px",
+                            fontWeight: "bold",
+                          }}
+                        >
+                          🏟️ {getTeamName(
+                            training.team_id
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div
@@ -650,6 +803,16 @@ function ManageTrainings({
               >
                 {formatDate(trainingToDelete.date)} •{" "}
                 {formatTime(trainingToDelete.time)}
+
+                {viewerRole === "admin" && (
+                  <>
+                    <br />
+                    🏟️{" "}
+                    {getTeamName(
+                      trainingToDelete.team_id
+                    )}
+                  </>
+                )}
               </p>
 
               <div

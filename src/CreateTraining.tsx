@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { supabase } from "./supabase"
 
 type CreateTrainingProps = {
@@ -9,6 +9,12 @@ type Exercise = {
   id: number
   name: string
   description: string
+}
+
+type Team = {
+  id: string
+  name: string
+  club_name: string
 }
 
 function CreateTraining({
@@ -32,6 +38,21 @@ function CreateTraining({
   const [errorMessage, setErrorMessage] =
     useState("")
 
+  const [role, setRole] =
+    useState<"coach" | "admin" | null>(null)
+
+  const [coachTeamId, setCoachTeamId] =
+    useState<string | null>(null)
+
+  const [teams, setTeams] =
+    useState<Team[]>([])
+
+  const [selectedTeamId, setSelectedTeamId] =
+    useState("")
+
+  const [loadingAccess, setLoadingAccess] =
+    useState(true)
+
   const [exercises, setExercises] =
     useState<Exercise[]>([
       {
@@ -40,6 +61,105 @@ function CreateTraining({
         description: "",
       },
     ])
+
+  useEffect(() => {
+    const loadAccess = async () => {
+      setLoadingAccess(true)
+      setErrorMessage("")
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser()
+
+      if (userError || !user) {
+        setErrorMessage(
+          "Du behöver vara inloggad som ledare eller admin."
+        )
+        setLoadingAccess(false)
+        return
+      }
+
+      const {
+        data: profile,
+        error: profileError,
+      } = await supabase
+        .from("profiles")
+        .select("role, team_id")
+        .eq("id", user.id)
+        .single()
+
+      if (profileError || !profile) {
+        setErrorMessage(
+          "Kunde inte hämta din ledarprofil."
+        )
+        setLoadingAccess(false)
+        return
+      }
+
+      if (
+        profile.role !== "coach" &&
+        profile.role !== "admin"
+      ) {
+        setErrorMessage(
+          "Du har inte behörighet att skapa träningar."
+        )
+        setLoadingAccess(false)
+        return
+      }
+
+      setRole(profile.role)
+      setCoachTeamId(profile.team_id)
+
+      if (profile.role === "coach") {
+        if (!profile.team_id) {
+          setErrorMessage(
+            "Din ledarprofil är inte kopplad till något lag ännu."
+          )
+        } else {
+          setSelectedTeamId(profile.team_id)
+        }
+
+        setLoadingAccess(false)
+        return
+      }
+
+      const {
+        data: teamData,
+        error: teamError,
+      } = await supabase
+        .from("teams")
+        .select("id, name, club_name")
+        .order("name", {
+          ascending: true,
+        })
+
+      if (teamError) {
+        console.error(teamError)
+
+        setErrorMessage(
+          "Kunde inte hämta lagen."
+        )
+        setLoadingAccess(false)
+        return
+      }
+
+      const loadedTeams =
+        teamData ?? []
+
+      setTeams(loadedTeams)
+
+      if (loadedTeams.length === 1) {
+        setSelectedTeamId(
+          loadedTeams[0].id
+        )
+      }
+
+      setLoadingAccess(false)
+    }
+
+    void loadAccess()
+  }, [])
 
   const normalizeTime = (
     value: string
@@ -219,42 +339,16 @@ function CreateTraining({
       return
     }
 
-    const {
-      data: profile,
-      error: profileError,
-    } = await supabase
-      .from("profiles")
-      .select("role, team_id")
-      .eq("id", user.id)
-      .single()
+    const teamId =
+      role === "admin"
+        ? selectedTeamId
+        : coachTeamId
 
-    if (
-      profileError ||
-      !profile
-    ) {
-      console.error(profileError)
-
+    if (!teamId) {
       setErrorMessage(
-        "Kunde inte hämta din ledarprofil."
-      )
-      setSaving(false)
-      return
-    }
-
-    if (
-      profile.role !== "coach" &&
-      profile.role !== "admin"
-    ) {
-      setErrorMessage(
-        "Du har inte behörighet att skapa träningar."
-      )
-      setSaving(false)
-      return
-    }
-
-    if (!profile.team_id) {
-      setErrorMessage(
-        "Din ledarprofil är inte kopplad till något lag ännu."
+        role === "admin"
+          ? "Välj vilket lag träningen gäller."
+          : "Din ledarprofil är inte kopplad till något lag ännu."
       )
       setSaving(false)
       return
@@ -277,7 +371,7 @@ function CreateTraining({
         notes:
           notes.trim() || null,
         created_by: user.id,
-        team_id: profile.team_id,
+        team_id: teamId,
       })
 
     if (error) {
@@ -526,6 +620,67 @@ function CreateTraining({
           padding: "20px",
         }}
       >
+        {role === "admin" && (
+          <section
+            style={{
+              ...cardStyle,
+              borderTop:
+                "4px solid #f39200",
+            }}
+          >
+            <p
+              style={{
+                margin: "0 0 6px",
+                color: "#6b7280",
+                fontSize: "12px",
+                fontWeight: "bold",
+                textTransform:
+                  "uppercase",
+              }}
+            >
+              Admin
+            </p>
+
+            <h2
+              style={{
+                margin: "0 0 16px",
+                color: "#123b2a",
+              }}
+            >
+              👥 Välj lag
+            </h2>
+
+            <label style={labelStyle}>
+              Vilket lag gäller träningen?
+            </label>
+
+            <select
+              value={selectedTeamId}
+              onChange={(event) =>
+                setSelectedTeamId(
+                  event.target.value
+                )
+              }
+              style={inputStyle}
+              disabled={loadingAccess}
+            >
+              <option value="">
+                Välj lag
+              </option>
+
+              {teams.map((team) => (
+                <option
+                  key={team.id}
+                  value={team.id}
+                >
+                  {team.club_name} •{" "}
+                  {team.name}
+                </option>
+              ))}
+            </select>
+          </section>
+        )}
+
         <section
           style={{
             ...cardStyle,
