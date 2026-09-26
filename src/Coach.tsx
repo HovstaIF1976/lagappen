@@ -5,6 +5,7 @@ import CoachCheckIns from "./CoachCheckIns"
 import Players from "./Players"
 import ManageTeams from "./ManageTeams"
 import ManageLeaders from "./ManageLeaders"
+import LeaderDashboard from "./LeaderDashboard"
 import { supabase } from "./supabase"
 import hovstaLogo from "./assets/300374317_580630103589064_157634585059629613_n.jpg"
 
@@ -286,6 +287,10 @@ function Coach({ onBack }: CoachProps) {
           padding: "20px",
         }}
       >
+        <LeaderDashboard
+          onOpenResponses={() => setPage("checkIns")}
+        />
+
         <div
           style={{
             marginBottom: "18px",
